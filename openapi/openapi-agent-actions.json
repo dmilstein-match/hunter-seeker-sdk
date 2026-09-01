@@ -58,7 +58,7 @@
           "run"
         ],
         "x-hs-agent-action": true,
-        "description": "Existing tool; schema is owned by the product's packages/mcp and merged here by the product's build.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -1523,7 +1523,7 @@
       },
       "hs_describe_capabilities_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {}
       },
       "hs_describe_capabilities_output": {
         "type": "object",
@@ -1531,7 +1531,22 @@
       },
       "hs_provide_dataset_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "fetch_url": {
+            "type": "string",
+            "description": "Public https URL to retrieve the dataset from. Omit to receive an upload_url instead."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Human-readable dataset name."
+          },
+          "direct_upload": {
+            "type": "boolean",
+            "description": "Direct-to-storage upload is now the DEFAULT (no size or row cap), so you rarely need this. Set false to instead receive a proxied upload_url, which normalizes a JSON body to CSV but is capped at the ~4.5MB serverless body limit. Ignored when fetch_url is present."
+          }
+        },
+        "additionalProperties": false
       },
       "hs_provide_dataset_output": {
         "type": "object",
@@ -1539,7 +1554,146 @@
       },
       "hs_rank_topk_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "description": "Inline JSON rows (SYNCHRONOUS — the ranking returns immediately). Best for a few hundred rows: the data rides inside your tool-call payload, so your CLIENT's per-message budget (Claude Code ~25k tokens, Claude Desktop ~150k chars) usually binds well before the server ceiling (~4MB / 2000 rows / 64 columns). Each row is one entity observation. For anything medium or larger, use dataset_id / fetch_url / direct_upload."
+              },
+              "csv": {
+                "type": "string",
+                "description": "Inline CSV text — header row + data rows (SYNCHRONOUS). Same small-inline budget as rows; a convenience when you already hold CSV. For anything larger, use dataset_id / fetch_url / direct_upload."
+              },
+              "fetch_url": {
+                "type": "string",
+                "description": "Public https URL the SERVER fetches, parses, and ranks in ONE async call (collapses hs_provide_dataset + hs_rank_topk). Returns { status:\"pending\", task_id } — poll hs_poll_task. Internal/private/non-https URLs are refused."
+              },
+              "dataset_id": {
+                "type": "string",
+                "description": "A dataset already registered via hs_provide_dataset (upload or fetch), for larger data. ASYNC — returns { status:\"pending\", task_id }; poll hs_poll_task."
+              },
+              "direct_upload": {
+                "type": "boolean",
+                "const": true,
+                "description": "Set true to receive a direct-to-storage PUT URL (upload_url + dataset_id) for a large dataset (~1M rows), bypassing the inline/proxy caps. NO ranking starts: PUT your CSV, then call hs_rank_topk again with the returned dataset_id."
+              }
+            },
+            "additionalProperties": false,
+            "description": "Exactly one data source: rows or csv (small, inline, synchronous) | fetch_url or dataset_id (async, poll hs_poll_task) | direct_upload:true (get an upload URL — no run starts)."
+          },
+          "outcome_column": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The column holding the yes/no result to learn to predict. Must be known historically - not derived after the outcome (that is leakage)."
+          },
+          "entity_column": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What each row represents, e.g. customer_id, machine_id, application_id."
+          },
+          "subject_kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "org",
+              "object",
+              "event",
+              "other"
+            ],
+            "description": "What kind of thing each entity is. \"person\" enables decision-support safeguards."
+          },
+          "horizon": {
+            "type": "string",
+            "description": "The time window the prediction is about, e.g. \"30 days\"."
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "k": {
+                "type": "number",
+                "description": "How many top entities to return (default 20, max 100)."
+              },
+              "offset": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          },
+          "acknowledge_decision_support": {
+            "type": "boolean",
+            "description": "Required true when subject_kind is \"person\" and the outcome is in a regulated domain (hiring, credit, education, insurance, benefits, justice). Confirms results are decision-support with human review."
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "For dataset_id runs: reuse to dedupe retried submissions onto the same task."
+          },
+          "reading": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "minLength": 1,
+                "description": "A kind id from hs_describe_capabilities → readings.kinds (e.g. \"sequential\")."
+              },
+              "version": {
+                "type": "number",
+                "description": "The kind version, from the same list."
+              },
+              "roles": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "description": "This kind’s role names mapped to YOUR column names, e.g. {\"identifier\":\"customer_id\",\"time_axis\":\"ts\",\"event_type\":\"event\"}. Nothing is inferred — every required_role must appear."
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": {},
+                "description": "Validated ENGINE-side against the kind’s param_schema. A bad value returns a named 422 and the run is refunded."
+              },
+              "label": {
+                "type": "object",
+                "additionalProperties": {},
+                "description": "The outcome predicate, as data, e.g. {\"kind\":\"lapsed\"}. Your meaning, never ours."
+              },
+              "as_of": {
+                "type": "string",
+                "description": "ISO-8601 cutoff. Omit and the engine computes it from your data and RETURNS it."
+              }
+            },
+            "required": [
+              "kind",
+              "version",
+              "roles"
+            ],
+            "additionalProperties": false,
+            "description": "Reduce an EVENT table to one row per entity BEFORE ranking. Omit when your rows are already one per entity."
+          }
+        },
+        "required": [
+          "data",
+          "outcome_column",
+          "entity_column",
+          "subject_kind"
+        ],
+        "additionalProperties": false
       },
       "hs_rank_topk_output": {
         "type": "object",
@@ -1547,7 +1701,17 @@
       },
       "hs_poll_task_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Task id returned by hs_rank_topk (dataset mode)."
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "additionalProperties": false
       },
       "hs_poll_task_output": {
         "type": "object",
@@ -1555,7 +1719,17 @@
       },
       "hs_model_quality_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The ranking_ref from a prior hs_rank_topk result."
+          }
+        },
+        "required": [
+          "ranking_ref"
+        ],
+        "additionalProperties": false
       },
       "hs_model_quality_output": {
         "type": "object",
@@ -1563,7 +1737,17 @@
       },
       "hs_explain_drivers_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The ranking_ref from a prior hs_rank_topk result."
+          }
+        },
+        "required": [
+          "ranking_ref"
+        ],
+        "additionalProperties": false
       },
       "hs_explain_drivers_output": {
         "type": "object",
@@ -1571,7 +1755,27 @@
       },
       "hs_explain_levers_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The ranking_ref from a prior hs_rank_topk result."
+          },
+          "entity_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "Entities from that ranking to explain (max 20 per call)."
+          }
+        },
+        "required": [
+          "ranking_ref",
+          "entity_ids"
+        ],
+        "additionalProperties": false
       },
       "hs_explain_levers_output": {
         "type": "object",
@@ -1579,11 +1783,273 @@
       },
       "hs_context_brief_input": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The ranking_ref from a prior hs_rank_topk result."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "markdown"
+            ],
+            "description": "Output format. Both carry identical numbers; markdown is prose for a human or for a prompt. Default json."
+          }
+        },
+        "required": [
+          "ranking_ref"
+        ],
+        "additionalProperties": false
       },
       "hs_context_brief_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "schema": {
+            "type": "string",
+            "const": "hs.brief.v1"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              },
+              "ranking_ref": {
+                "type": "string"
+              },
+              "series_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "computed_at": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash",
+              "ranking_ref",
+              "series_key",
+              "computed_at"
+            ],
+            "additionalProperties": false
+          },
+          "outcome": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "label"
+            ],
+            "additionalProperties": false
+          },
+          "trust": {
+            "type": "object",
+            "properties": {
+              "top_decile_lift": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "calibration_error": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "validation": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scheme": {
+                        "type": "string"
+                      },
+                      "split_fraction": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "n_train": {
+                        "type": "number"
+                      },
+                      "n_holdout": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "n_reserved_test": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "scheme",
+                      "split_fraction",
+                      "n_train",
+                      "n_holdout",
+                      "n_reserved_test"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "leak_guard": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "column": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "column",
+                        "reason"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "honest_empty": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "top_decile_lift",
+              "calibration_error",
+              "validation",
+              "leak_guard",
+              "honest_empty"
+            ],
+            "additionalProperties": false
+          },
+          "driver_group": {
+            "type": "object",
+            "properties": {
+              "interpretation": {
+                "type": "string",
+                "const": "association_not_causal"
+              },
+              "evaluate_as_a_unit": {
+                "type": "boolean",
+                "const": true
+              },
+              "drivers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "higher",
+                        "lower",
+                        "different"
+                      ]
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "category_match": {
+                      "type": "string",
+                      "enum": [
+                        "is_one_of",
+                        "is_not_one_of"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "label",
+                    "direction"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "guidance": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "interpretation",
+              "evaluate_as_a_unit",
+              "drivers",
+              "guidance"
+            ],
+            "additionalProperties": false
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "decision_support_only": {
+                "type": "boolean",
+                "const": true
+              },
+              "regulated_domains": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "decision_support_only",
+              "regulated_domains"
+            ],
+            "additionalProperties": false
+          },
+          "honest_empty_note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "provenance",
+          "outcome",
+          "trust",
+          "driver_group",
+          "limits"
+        ],
+        "additionalProperties": false
       }
     }
   }
