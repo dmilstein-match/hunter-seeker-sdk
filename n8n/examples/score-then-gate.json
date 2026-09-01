@@ -1,0 +1,9 @@
+{ "name": "Score then gate", "nodes": [
+  { "name": "CRM trigger", "type": "n8n-nodes-base.webhook", "parameters": { "path": "lead" } },
+  { "name": "Score", "type": "n8n-nodes-hunter-seeker.hunterSeeker", "parameters": { "operation": "score", "modelRef": "={{$json.model_ref}}", "row": "={{$json.row}}", "subjectKind": "org" } },
+  { "name": "Act?", "type": "n8n-nodes-base.if", "parameters": { "conditions": { "string": [{ "value1": "={{$json.entity.band}}", "value2": "act" }] } } },
+  { "name": "Send", "type": "n8n-nodes-base.emailSend" },
+  { "name": "Ask a human", "type": "n8n-nodes-base.slack" },
+  { "name": "Wait for approval", "type": "n8n-nodes-base.wait", "parameters": { "resume": "webhook" } },
+  { "name": "Report outcome", "type": "n8n-nodes-hunter-seeker.hunterSeeker", "parameters": { "operation": "report" } }
+] }

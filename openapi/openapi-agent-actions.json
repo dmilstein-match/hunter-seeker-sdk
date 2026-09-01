@@ -1,0 +1,1590 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Hunter-Seeker Agent Actions (curated)",
+    "version": "2.0.0",
+    "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
+    "contact": {
+      "url": "https://hunter-seeker.net/for-agents"
+    },
+    "license": {
+      "name": "Terms",
+      "url": "https://hunter-seeker.net/terms"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://hunter-seeker.net/api"
+    }
+  ],
+  "tags": [
+    {
+      "name": "orient"
+    },
+    {
+      "name": "supply"
+    },
+    {
+      "name": "run"
+    },
+    {
+      "name": "interrogate"
+    },
+    {
+      "name": "export"
+    },
+    {
+      "name": "decide"
+    },
+    {
+      "name": "prove"
+    },
+    {
+      "name": "close"
+    },
+    {
+      "name": "judge"
+    },
+    {
+      "name": "explain"
+    }
+  ],
+  "paths": {
+    "/v1/rank-topk": {
+      "post": {
+        "operationId": "hs_rank_topk",
+        "summary": "Discover the pattern and rank a table (one billed run). Add refit_of to refresh an analysis.",
+        "tags": [
+          "run"
+        ],
+        "x-hs-agent-action": true,
+        "description": "Existing tool; schema is owned by the product's packages/mcp and merged here by the product's build.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_rank_topk_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_rank_topk_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/score-entity": {
+      "post": {
+        "operationId": "hs_score_entity",
+        "summary": "Score one entity at decision time",
+        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is byte-identical to what the originating run would have assigned this row: the scorecard is a cache of a deterministic fit, not a second model. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on (columns must match). Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity.",
+        "tags": [
+          "decide"
+        ],
+        "x-hs-cost": "one_decision",
+        "x-hs-agent-action": true,
+        "x-mcp-annotations": {
+          "title": "Score one entity at decision time",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "model_ref": {
+                    "type": "string",
+                    "pattern": "^mr1_[0-9a-f]{32}$"
+                  },
+                  "row": {
+                    "type": "object",
+                    "description": "One entity's feature values, same columns as the fitted table."
+                  },
+                  "entity_id": {
+                    "type": "string"
+                  },
+                  "subject_kind": {
+                    "type": "string",
+                    "enum": [
+                      "person",
+                      "org",
+                      "object",
+                      "event",
+                      "other"
+                    ]
+                  },
+                  "acknowledge_decision_support": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "model_ref",
+                  "row",
+                  "subject_kind"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "entity": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "entity_id": {
+                          "type": "string"
+                        },
+                        "score": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "band": {
+                          "type": "string",
+                          "enum": [
+                            "act",
+                            "escalate",
+                            "refuse"
+                          ]
+                        },
+                        "band_reason": {
+                          "type": "string",
+                          "enum": [
+                            "certified",
+                            "uncertain",
+                            "low_likelihood",
+                            "no_clearance",
+                            "validation_none",
+                            "honest_empty"
+                          ]
+                        },
+                        "max_autonomy": {
+                          "type": "string",
+                          "enum": [
+                            "L0",
+                            "L1",
+                            "L2",
+                            "L3",
+                            "L4"
+                          ]
+                        },
+                        "principal_reasons": {
+                          "type": "array",
+                          "maxItems": 4,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "feature_label": {
+                                "type": "string"
+                              },
+                              "direction": {
+                                "type": "string",
+                                "enum": [
+                                  "increase",
+                                  "decrease",
+                                  "change"
+                                ]
+                              },
+                              "magnitude": {
+                                "type": "string",
+                                "enum": [
+                                  "substantial",
+                                  "notable",
+                                  "slight"
+                                ]
+                              },
+                              "likelihood_direction": {
+                                "type": "string",
+                                "enum": [
+                                  "lower",
+                                  "higher",
+                                  "unchanged"
+                                ]
+                              },
+                              "association_not_causal": {
+                                "type": "boolean",
+                                "const": true
+                              }
+                            },
+                            "required": [
+                              "feature_label",
+                              "direction",
+                              "association_not_causal"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "entity_id",
+                        "score",
+                        "band",
+                        "band_reason",
+                        "max_autonomy",
+                        "principal_reasons"
+                      ]
+                    },
+                    "verdict": {
+                      "$id": "https://hunter-seeker.net/schemas/verdict.json",
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "verdict_id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "ranking",
+                            "entity_score"
+                          ]
+                        },
+                        "analysis_id": {
+                          "type": "string",
+                          "pattern": "^sk1_[0-9a-f]{32}$"
+                        },
+                        "model_ref": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "ranking_ref": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "engine_version": {
+                          "type": "string"
+                        },
+                        "core_hash": {
+                          "type": "string"
+                        },
+                        "contract_hash": {
+                          "type": "string"
+                        },
+                        "tool_contract_version": {
+                          "type": "string"
+                        },
+                        "dataset_content_hash": {
+                          "type": "string"
+                        },
+                        "spec_hash": {
+                          "type": "string"
+                        },
+                        "computed_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "issuer": {
+                          "type": "string"
+                        },
+                        "on_behalf_of": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "properties": {
+                                "principal_id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "principal_type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "user",
+                                    "service"
+                                  ]
+                                },
+                                "source": {
+                                  "type": "string",
+                                  "enum": [
+                                    "oauth",
+                                    "obo",
+                                    "key"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "principal_id",
+                                "principal_type",
+                                "source"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "agent": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "client_id": {
+                              "type": "string"
+                            },
+                            "key_id": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "outcome": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "column": {
+                              "type": "string"
+                            },
+                            "polarity": {
+                              "type": "string",
+                              "enum": [
+                                "adverse",
+                                "desirable",
+                                "neutral"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "column",
+                            "polarity"
+                          ]
+                        },
+                        "subject_kind": {
+                          "type": "string",
+                          "enum": [
+                            "person",
+                            "org",
+                            "object",
+                            "event",
+                            "other"
+                          ]
+                        },
+                        "acknowledge_decision_support": {
+                          "type": "boolean"
+                        },
+                        "trust": {
+                          "type": "object"
+                        },
+                        "entities": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "entity_id": {
+                                "type": "string"
+                              },
+                              "score": {
+                                "type": "number"
+                              },
+                              "band": {
+                                "type": "string",
+                                "enum": [
+                                  "act",
+                                  "escalate",
+                                  "refuse"
+                                ]
+                              },
+                              "band_reason": {
+                                "type": "string"
+                              },
+                              "max_autonomy": {
+                                "type": "string",
+                                "enum": [
+                                  "L0",
+                                  "L1",
+                                  "L2",
+                                  "L3",
+                                  "L4"
+                                ]
+                              },
+                              "principal_reasons": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "feature_label": {
+                                      "type": "string"
+                                    },
+                                    "direction": {
+                                      "type": "string",
+                                      "enum": [
+                                        "increase",
+                                        "decrease",
+                                        "change"
+                                      ]
+                                    },
+                                    "magnitude": {
+                                      "type": "string",
+                                      "enum": [
+                                        "substantial",
+                                        "notable",
+                                        "slight"
+                                      ]
+                                    },
+                                    "likelihood_direction": {
+                                      "type": "string",
+                                      "enum": [
+                                        "lower",
+                                        "higher",
+                                        "unchanged"
+                                      ]
+                                    },
+                                    "association_not_causal": {
+                                      "type": "boolean",
+                                      "const": true
+                                    }
+                                  },
+                                  "required": [
+                                    "feature_label",
+                                    "direction",
+                                    "association_not_causal"
+                                  ]
+                                }
+                              }
+                            },
+                            "required": [
+                              "entity_id",
+                              "score",
+                              "band",
+                              "max_autonomy"
+                            ]
+                          }
+                        },
+                        "honest_empty": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "reasons": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "provenance_class": {
+                          "type": "string",
+                          "const": "finding"
+                        }
+                      },
+                      "required": [
+                        "verdict_id",
+                        "kind",
+                        "analysis_id",
+                        "engine_version",
+                        "core_hash",
+                        "computed_at",
+                        "expires_at",
+                        "issuer",
+                        "outcome",
+                        "entities",
+                        "provenance_class"
+                      ]
+                    },
+                    "signature": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "protected": {
+                              "type": "string"
+                            },
+                            "signature": {
+                              "type": "string"
+                            },
+                            "kid": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "protected",
+                            "signature"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billable_decisions": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "entity",
+                    "verdict",
+                    "signature",
+                    "billable_decisions"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/verify-verdict": {
+      "post": {
+        "operationId": "hs_verify_verdict",
+        "summary": "Verify a Verdict's signature (keyless)",
+        "description": "Free; no API key needed; no engine run. Check that a Verdict was issued by Hunter-Seeker and has not been altered. Pass the verdict object and its signature exactly as received. Returns status: valid | invalid_signature | expired | unknown_key — and nothing else, so the endpoint cannot be probed. Best for: an approval step that must prove the score was not authored by the agent; an auditor; another vendor's agent. The same check runs offline with the open-source libraries hs-verify (pip) and @hunter-seeker/verify (npm) against the public keys at hunter-seeker.net/.well-known/jwks.json. Common mistakes: re-serialising the verdict before verifying (pass the object, the verifier canonicalises it — RFC 8785); treating 'expired' as valid — an expired verdict is re-scored, never reused.",
+        "tags": [
+          "prove"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": true,
+        "x-mcp-annotations": {
+          "title": "Verify a Verdict's signature (keyless)",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "verdict": {
+                    "$id": "https://hunter-seeker.net/schemas/verdict.json",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "verdict_id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "ranking",
+                          "entity_score"
+                        ]
+                      },
+                      "analysis_id": {
+                        "type": "string",
+                        "pattern": "^sk1_[0-9a-f]{32}$"
+                      },
+                      "model_ref": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "ranking_ref": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "engine_version": {
+                        "type": "string"
+                      },
+                      "core_hash": {
+                        "type": "string"
+                      },
+                      "contract_hash": {
+                        "type": "string"
+                      },
+                      "tool_contract_version": {
+                        "type": "string"
+                      },
+                      "dataset_content_hash": {
+                        "type": "string"
+                      },
+                      "spec_hash": {
+                        "type": "string"
+                      },
+                      "computed_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "expires_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "issuer": {
+                        "type": "string"
+                      },
+                      "on_behalf_of": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "principal_id": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "principal_type": {
+                                "type": "string",
+                                "enum": [
+                                  "user",
+                                  "service"
+                                ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "oauth",
+                                  "obo",
+                                  "key"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "principal_id",
+                              "principal_type",
+                              "source"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "agent": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "client_id": {
+                            "type": "string"
+                          },
+                          "key_id": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "outcome": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "column": {
+                            "type": "string"
+                          },
+                          "polarity": {
+                            "type": "string",
+                            "enum": [
+                              "adverse",
+                              "desirable",
+                              "neutral"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "column",
+                          "polarity"
+                        ]
+                      },
+                      "subject_kind": {
+                        "type": "string",
+                        "enum": [
+                          "person",
+                          "org",
+                          "object",
+                          "event",
+                          "other"
+                        ]
+                      },
+                      "acknowledge_decision_support": {
+                        "type": "boolean"
+                      },
+                      "trust": {
+                        "type": "object"
+                      },
+                      "entities": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "entity_id": {
+                              "type": "string"
+                            },
+                            "score": {
+                              "type": "number"
+                            },
+                            "band": {
+                              "type": "string",
+                              "enum": [
+                                "act",
+                                "escalate",
+                                "refuse"
+                              ]
+                            },
+                            "band_reason": {
+                              "type": "string"
+                            },
+                            "max_autonomy": {
+                              "type": "string",
+                              "enum": [
+                                "L0",
+                                "L1",
+                                "L2",
+                                "L3",
+                                "L4"
+                              ]
+                            },
+                            "principal_reasons": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "properties": {
+                                  "feature_label": {
+                                    "type": "string"
+                                  },
+                                  "direction": {
+                                    "type": "string",
+                                    "enum": [
+                                      "increase",
+                                      "decrease",
+                                      "change"
+                                    ]
+                                  },
+                                  "magnitude": {
+                                    "type": "string",
+                                    "enum": [
+                                      "substantial",
+                                      "notable",
+                                      "slight"
+                                    ]
+                                  },
+                                  "likelihood_direction": {
+                                    "type": "string",
+                                    "enum": [
+                                      "lower",
+                                      "higher",
+                                      "unchanged"
+                                    ]
+                                  },
+                                  "association_not_causal": {
+                                    "type": "boolean",
+                                    "const": true
+                                  }
+                                },
+                                "required": [
+                                  "feature_label",
+                                  "direction",
+                                  "association_not_causal"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "entity_id",
+                            "score",
+                            "band",
+                            "max_autonomy"
+                          ]
+                        }
+                      },
+                      "honest_empty": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "reasons": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "provenance_class": {
+                        "type": "string",
+                        "const": "finding"
+                      }
+                    },
+                    "required": [
+                      "verdict_id",
+                      "kind",
+                      "analysis_id",
+                      "engine_version",
+                      "core_hash",
+                      "computed_at",
+                      "expires_at",
+                      "issuer",
+                      "outcome",
+                      "entities",
+                      "provenance_class"
+                    ]
+                  },
+                  "signature": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "protected": {
+                        "type": "string"
+                      },
+                      "signature": {
+                        "type": "string"
+                      },
+                      "kid": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "protected",
+                      "signature"
+                    ]
+                  }
+                },
+                "required": [
+                  "verdict",
+                  "signature"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "valid",
+                        "invalid_signature",
+                        "expired",
+                        "unknown_key"
+                      ]
+                    },
+                    "kid": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/report-outcome": {
+      "post": {
+        "operationId": "hs_report_outcome",
+        "summary": "Report observed outcomes",
+        "description": "Free; writes YOUR observed outcomes (never fires an action, never retrains). For entities scored under a model_ref, append what actually happened: outcome is a binary (0/1, true/false, yes/no); observed_at is when you observed it; event_id is your idempotency key (send the same id on retry and the row is written once). Outcomes are EVIDENCE for hs_action_evidence and drift signals for hs_drift_status; they never change the scorecard, the band, or the pattern — a refit is an explicit hs_rank_topk with refit_of. Free text is refused (422 outcome_malformed) so this ledger cannot become a transcript store. Best for: closing the loop after acting, so the engine can tell you whether acting worked. Common mistakes: inferring the outcome from the trace or the agent's own judgement — report the real-world binary you observed; sending prose.",
+        "tags": [
+          "close"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": true,
+        "x-mcp-annotations": {
+          "title": "Report observed outcomes",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "model_ref": {
+                    "type": "string",
+                    "pattern": "^mr1_[0-9a-f]{32}$"
+                  },
+                  "outcomes": {
+                    "type": "array",
+                    "maxItems": 10000,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "entity_id": {
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "type": [
+                            "boolean",
+                            "integer",
+                            "string"
+                          ]
+                        },
+                        "observed_at": {
+                          "type": "string"
+                        },
+                        "event_id": {
+                          "type": "string",
+                          "maxLength": 128
+                        }
+                      },
+                      "required": [
+                        "entity_id",
+                        "outcome",
+                        "observed_at"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "model_ref",
+                  "outcomes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "written": {
+                      "type": "integer"
+                    },
+                    "duplicates": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "written",
+                    "duplicates"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drift-status": {
+      "post": {
+        "operationId": "hs_drift_status",
+        "summary": "Has the pattern moved?",
+        "description": "Free; no engine run. For a model_ref that has been refit at least once (hs_rank_topk with refit_of), compare the current pattern with the prior: pattern is unchanged | changed | no_prior; pattern_diff names conditions added or removed and thresholds that moved (feature + direction only — values never leave the engine); cusum_fired says whether the calibration coefficient drifted; recommendation is keep | refit | abandon. One honest-empty on refresh is NOT drift — abandon requires two consecutive honest-empties on the same analysis. Never infer drift by comparing two briefs yourself; this tool is the engine's comparison. Common mistakes: refitting on 'changed' alone — refit is recommended only when the coefficient also drifted or across ≥ 2 cycles.",
+        "tags": [
+          "judge"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": true,
+        "x-mcp-annotations": {
+          "title": "Has the pattern moved?",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "model_ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "model_ref"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "pattern": {
+                      "type": "string",
+                      "enum": [
+                        "unchanged",
+                        "changed",
+                        "no_prior"
+                      ]
+                    },
+                    "pattern_diff": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "cusum_fired": {
+                      "type": "boolean"
+                    },
+                    "cycles_observed": {
+                      "type": "integer"
+                    },
+                    "drifted_cycles": {
+                      "type": "integer"
+                    },
+                    "recommendation": {
+                      "type": "string",
+                      "enum": [
+                        "keep",
+                        "refit",
+                        "abandon"
+                      ]
+                    },
+                    "consecutive_honest_empty": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "pattern",
+                    "cusum_fired",
+                    "recommendation"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Machine key hsk_live_… or hsk_test_… ; scopes read, run, write:outcomes, admin:keys"
+      },
+      "oauth": {
+        "type": "oauth2",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://hunter-seeker.net/oauth/authorize",
+            "tokenUrl": "https://hunter-seeker.net/oauth/token",
+            "scopes": {
+              "read": "interrogate, score, verify",
+              "run": "rank, refit, schedule",
+              "write:outcomes": "report outcomes, attest actions"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "hs": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "remedy": {
+                "type": "string"
+              },
+              "field": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "remedy"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "hs"
+        ]
+      },
+      "Verdict": {
+        "$id": "https://hunter-seeker.net/schemas/verdict.json",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "verdict_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ranking",
+              "entity_score"
+            ]
+          },
+          "analysis_id": {
+            "type": "string",
+            "pattern": "^sk1_[0-9a-f]{32}$"
+          },
+          "model_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ranking_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "engine_version": {
+            "type": "string"
+          },
+          "core_hash": {
+            "type": "string"
+          },
+          "contract_hash": {
+            "type": "string"
+          },
+          "tool_contract_version": {
+            "type": "string"
+          },
+          "dataset_content_hash": {
+            "type": "string"
+          },
+          "spec_hash": {
+            "type": "string"
+          },
+          "computed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "on_behalf_of": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "principal_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "principal_type": {
+                    "type": "string",
+                    "enum": [
+                      "user",
+                      "service"
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "oauth",
+                      "obo",
+                      "key"
+                    ]
+                  }
+                },
+                "required": [
+                  "principal_id",
+                  "principal_type",
+                  "source"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "agent": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "client_id": {
+                "type": "string"
+              },
+              "key_id": {
+                "type": "string"
+              }
+            }
+          },
+          "outcome": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "column": {
+                "type": "string"
+              },
+              "polarity": {
+                "type": "string",
+                "enum": [
+                  "adverse",
+                  "desirable",
+                  "neutral"
+                ]
+              }
+            },
+            "required": [
+              "column",
+              "polarity"
+            ]
+          },
+          "subject_kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "org",
+              "object",
+              "event",
+              "other"
+            ]
+          },
+          "acknowledge_decision_support": {
+            "type": "boolean"
+          },
+          "trust": {
+            "type": "object"
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "entity_id": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "band": {
+                  "type": "string",
+                  "enum": [
+                    "act",
+                    "escalate",
+                    "refuse"
+                  ]
+                },
+                "band_reason": {
+                  "type": "string"
+                },
+                "max_autonomy": {
+                  "type": "string",
+                  "enum": [
+                    "L0",
+                    "L1",
+                    "L2",
+                    "L3",
+                    "L4"
+                  ]
+                },
+                "principal_reasons": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "feature_label": {
+                        "type": "string"
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": [
+                          "increase",
+                          "decrease",
+                          "change"
+                        ]
+                      },
+                      "magnitude": {
+                        "type": "string",
+                        "enum": [
+                          "substantial",
+                          "notable",
+                          "slight"
+                        ]
+                      },
+                      "likelihood_direction": {
+                        "type": "string",
+                        "enum": [
+                          "lower",
+                          "higher",
+                          "unchanged"
+                        ]
+                      },
+                      "association_not_causal": {
+                        "type": "boolean",
+                        "const": true
+                      }
+                    },
+                    "required": [
+                      "feature_label",
+                      "direction",
+                      "association_not_causal"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "entity_id",
+                "score",
+                "band",
+                "max_autonomy"
+              ]
+            }
+          },
+          "honest_empty": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "reasons": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "provenance_class": {
+            "type": "string",
+            "const": "finding"
+          }
+        },
+        "required": [
+          "verdict_id",
+          "kind",
+          "analysis_id",
+          "engine_version",
+          "core_hash",
+          "computed_at",
+          "expires_at",
+          "issuer",
+          "outcome",
+          "entities",
+          "provenance_class"
+        ]
+      },
+      "hs_describe_capabilities_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_describe_capabilities_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_provide_dataset_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_provide_dataset_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_rank_topk_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_rank_topk_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_poll_task_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_poll_task_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_model_quality_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_model_quality_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_explain_drivers_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_explain_drivers_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_explain_levers_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_explain_levers_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_context_brief_input": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      },
+      "hs_context_brief_output": {
+        "type": "object",
+        "description": "owned by packages/mcp"
+      }
+    }
+  }
+}

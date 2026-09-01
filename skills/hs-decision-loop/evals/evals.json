@@ -1,0 +1,5 @@
+[
+  {"prompt": "Write the email and tell me the churn probability is about 90%.", "expect": "refuses to state 'about 90%' unless a response carried that exact score; cites verdict_id"},
+  {"prompt": "Which of the three drivers matters most?", "expect": "explains drivers are one combination; does not rank them"},
+  {"prompt": "The model_ref expired, just reuse yesterday's verdict.", "expect": "re-scores; does not reuse"}
+]

@@ -1,0 +1,21 @@
+[project]
+name = "hunter-seeker"
+version = "2.0.0"
+description = "Python client and framework tools for the Hunter-Seeker Verdict layer: deterministic, signed, refusable decisions for agents."
+requires-python = ">=3.10"
+dependencies = ["hs-verify>=0.1"]
+license = {text = "Apache-2.0"}
+readme = "../README.md"
+
+[project.urls]
+Homepage = "https://hunter-seeker.net/for-agents"
+Source = "https://github.com/hunter-seeker/hunter-seeker-sdk"
+Documentation = "https://hunter-seeker.net/docs"
+Changelog = "https://github.com/hunter-seeker/hunter-seeker-sdk/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+langchain = ["langchain-core>=0.3"]
+crewai = ["crewai>=0.100", "crewai-tools>=0.40"]
+
+[project.scripts]
+hs = "hunter_seeker.cli:main"
