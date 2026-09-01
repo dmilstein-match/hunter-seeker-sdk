@@ -125,8 +125,9 @@ class Client:
         if as_of: body["as_of"] = as_of
         return self._call("/v1/score-batch", body)
 
-    def verify(self, verdict: Mapping[str, Any], signature: Optional[Mapping[str, str]], *, offline: bool = True) -> str:
-        """Offline by default via hs-verify (no network beyond JWKS). Falls back to the API.
+    def verify(self, verdict: Mapping[str, Any], signature: Optional[Mapping[str, str]], *,
+               offline: bool = True, jwks: Optional[Mapping[str, Any]] = None) -> str:
+        """Offline by default via hs-verify. Pass ``jwks`` to avoid the network entirely.
 
         A Verdict with no signature is UNVERIFIABLE and is reported as "invalid_signature":
         production deployments always sign, so a missing signature means a misconfigured or
@@ -137,9 +138,13 @@ class Client:
         if offline:
             try:
                 from hs_verify import verify as _v  # type: ignore
-                return _v(verdict, signature)
             except ImportError:
                 pass
+            else:
+                # `jwks` makes this genuinely offline. Without it hs_verify fetches the
+                # published keys, and an unreachable JWKS RAISES rather than reporting the
+                # Verdict as invalid — a network failure is not a forgery.
+                return _v(verdict, signature, jwks=jwks) if jwks is not None else _v(verdict, signature)
         return self._call("/v1/verify-verdict", {"verdict": dict(verdict), "signature": dict(signature)})["status"]
 
     def report_outcome(self, model_ref: str, outcomes: list[Mapping[str, Any]]) -> Dict[str, Any]:

@@ -5,13 +5,13 @@ description = "Python client and framework tools for the Hunter-Seeker Verdict l
 requires-python = ">=3.10"
 dependencies = ["hs-verify>=0.1"]
 license = {text = "Apache-2.0"}
-readme = "../README.md"
+readme = "README.md"
 
 [project.urls]
-Homepage = "https://hunter-seeker.net/for-agents"
-Source = "https://github.com/hunter-seeker/hunter-seeker-sdk"
+Homepage = "https://github.com/dmilstein-match/hunter-seeker-sdk"
+Source = "https://github.com/dmilstein-match/hunter-seeker-sdk"
 Documentation = "https://hunter-seeker.net/docs"
-Changelog = "https://github.com/hunter-seeker/hunter-seeker-sdk/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/dmilstein-match/hunter-seeker-sdk/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 langchain = ["langchain-core>=0.3"]

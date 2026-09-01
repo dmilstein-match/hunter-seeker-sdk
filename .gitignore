@@ -1,0 +1,12 @@
+# Build artefacts. setuptools REUSES build/ across installs, so a stale one silently ships
+# yesterday's source in today's wheel — which is exactly how a fix can appear to be published
+# and not be.
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+node_modules/
