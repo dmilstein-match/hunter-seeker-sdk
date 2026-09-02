@@ -1,4 +1,33 @@
-{ "name": "n8n-nodes-hunter-seeker", "version": "2.0.0", "description": "Hunter-Seeker Verdict layer for n8n: score, rank, verify, report outcome, drift.", "license": "MIT",
-  "keywords": ["n8n-community-node-package"], "main": "index.js",
-  "n8n": { "n8nNodesApiVersion": 1, "credentials": ["dist/credentials/HunterSeekerApi.credentials.js"], "nodes": ["dist/nodes/HunterSeeker/HunterSeeker.node.js"] },
-  "peerDependencies": { "n8n-workflow": "*" }, "scripts": { "build": "tsc" } }
+{
+  "name": "n8n-nodes-hunter-seeker",
+  "version": "2.0.0",
+  "description": "Hunter-Seeker Verdict layer for n8n: score, rank, verify, report outcome, drift.",
+  "license": "MIT",
+  "keywords": [
+    "n8n-community-node-package"
+  ],
+  "main": "dist/nodes/HunterSeeker/HunterSeeker.node.js",
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/HunterSeekerApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/HunterSeeker/HunterSeeker.node.js"
+    ]
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "examples"
+  ],
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
