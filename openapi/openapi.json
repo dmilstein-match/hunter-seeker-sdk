@@ -2074,203 +2074,6 @@
         }
       }
     },
-    "/v1/drift-status": {
-      "post": {
-        "operationId": "hs_drift_status",
-        "summary": "Has the pattern moved?",
-        "description": "Free; no engine run. For a model_ref that has been refit at least once (hs_rank_topk with refit_of), compare the current pattern with the prior: pattern is unchanged | changed | no_prior; pattern_diff names conditions added or removed and thresholds that moved (feature + direction only — values never leave the engine); cusum_fired says whether the calibration coefficient drifted; recommendation is keep | refit | abandon. One honest-empty on refresh is NOT drift — abandon requires two consecutive honest-empties on the same analysis. Never infer drift by comparing two briefs yourself; this tool is the engine's comparison. Common mistakes: refitting on 'changed' alone — refit is recommended only when the coefficient also drifted or across ≥ 2 cycles.",
-        "tags": [
-          "judge"
-        ],
-        "x-hs-cost": "free",
-        "x-hs-agent-action": true,
-        "x-mcp-annotations": {
-          "title": "Has the pattern moved?",
-          "readOnlyHint": true,
-          "destructiveHint": false,
-          "idempotentHint": true,
-          "openWorldHint": false
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "oauth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "model_ref": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "model_ref"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "pattern": {
-                      "type": "string",
-                      "enum": [
-                        "unchanged",
-                        "changed",
-                        "no_prior"
-                      ]
-                    },
-                    "pattern_diff": {
-                      "type": [
-                        "object",
-                        "null"
-                      ]
-                    },
-                    "cusum_fired": {
-                      "type": "boolean"
-                    },
-                    "cycles_observed": {
-                      "type": "integer"
-                    },
-                    "drifted_cycles": {
-                      "type": "integer"
-                    },
-                    "recommendation": {
-                      "type": "string",
-                      "enum": [
-                        "keep",
-                        "refit",
-                        "abandon"
-                      ]
-                    },
-                    "consecutive_honest_empty": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "pattern",
-                    "cusum_fired",
-                    "recommendation"
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Problem",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/export-bundle": {
-      "post": {
-        "operationId": "hs_export_bundle",
-        "summary": "Export the regulator bundle for a verdict",
-        "description": "Free. For one verdict_id, returns a signed archive: the verdict and signature, the model card for its model_ref (validation scheme, calibration, leak-guard quarantines, intended use, limits), the entity's principal_reasons, the attestation and outcome rows for that entity, the ledger excerpt with the human principal, and a W3C PROV-O / OpenLineage JSON export of the chain. Built for adverse-action files, 30-day explanation duties, and model-risk vendor documentation. Common mistakes: expecting raw data — the bundle is engine-derived facts only.",
-        "tags": [
-          "explain"
-        ],
-        "x-hs-cost": "free",
-        "x-hs-agent-action": false,
-        "x-mcp-annotations": {
-          "title": "Export the regulator bundle for a verdict",
-          "readOnlyHint": true,
-          "destructiveHint": false,
-          "idempotentHint": true,
-          "openWorldHint": false
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "oauth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "verdict_id": {
-                    "type": "string"
-                  },
-                  "entity_id": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "verdict_id"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "bundle_url": {
-                      "type": "string"
-                    },
-                    "expires_at": {
-                      "type": "string"
-                    },
-                    "sha256": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "bundle_url",
-                    "sha256"
-                  ]
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Problem",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/.well-known/jwks.json": {
       "get": {
         "operationId": "jwks",
@@ -2648,7 +2451,37 @@
       },
       "hs_describe_capabilities_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "contract": {},
+          "trust": {},
+          "readings": {},
+          "examples": {
+            "type": "array",
+            "items": {}
+          },
+          "limits": {},
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
       },
       "hs_provide_dataset_input": {
         "type": "object",
@@ -2671,7 +2504,44 @@
       },
       "hs_provide_dataset_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "Pass this as data.dataset_id to hs_rank_topk."
+          },
+          "upload_url": {
+            "type": "string",
+            "description": "PUT the raw CSV/JSON bytes here before ranking."
+          },
+          "method": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "number"
+          },
+          "next": {},
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
       },
       "hs_rank_topk_input": {
         "type": "object",
@@ -2818,7 +2688,331 @@
       },
       "hs_rank_topk_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string",
+            "description": "Reuse this for the free drill-in tools for one hour."
+          },
+          "model_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The fitted scorecard behind this ranking. Pass it to hs_score_entity to decide about a single entity. NULL means the engine minted none for this run — re-run rather than guessing a ref."
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entity_id": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "tier": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "entity_id",
+                "score",
+                "tier"
+              ],
+              "additionalProperties": true
+            },
+            "description": "The ranked page, highest likelihood first."
+          },
+          "top_decile_lift": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "top_factors": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "coefficient": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "coefficient"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "scheme": {
+                    "type": "string"
+                  },
+                  "split_fraction": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "n_train": {
+                    "type": "number"
+                  },
+                  "n_holdout": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "n_reserved_test": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "scheme"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the model was validated. scheme \"none\" means no rows could be held back, and n_holdout is then null (not 0) with a reason."
+          },
+          "gate_verdicts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The engine-recorded gate decisions behind this answer."
+          },
+          "leak_guard": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "column",
+                    "reason"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Columns quarantined as likely target leakage, each with a plain-English reason. NULL means there was no finding (honest-null) — never that leakage was checked and found clean."
+          },
+          "entity_replication": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "n_rows": {
+                    "type": "number"
+                  },
+                  "n_entities": {
+                    "type": "number"
+                  },
+                  "median_rows_per_entity": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "share_repeated": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "scored_as": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "n_rows",
+                  "n_entities",
+                  "median_rows_per_entity",
+                  "share_repeated",
+                  "scored_as"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The SHAPE of the data behind this ranking. n_rows far above n_entities means the same entity sat on many rows — which leak_guard cannot tell you, because it catches a leaky COLUMN, not a leaky SPLIT."
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "k": {
+                "type": "number"
+              },
+              "offset": {
+                "type": "number"
+              },
+              "returned": {
+                "type": "number"
+              },
+              "total_ranked": {
+                "type": "number"
+              },
+              "next_offset": {
+                "type": "number"
+              },
+              "clamped": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "k",
+              "offset",
+              "returned",
+              "total_ranked"
+            ],
+            "additionalProperties": true
+          },
+          "next": {
+            "description": "What you can do with this ranking, and which of those cost nothing."
+          },
+          "leak_warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Local heuristic pre-flags of obviously post-outcome column names. Not a guarantee, and not a substitute for leak_guard."
+          },
+          "disclaimer": {
+            "type": "string",
+            "description": "Present on an acknowledged regulated-domain run. Surface it to the user."
+          },
+          "reading": {},
+          "result": {
+            "type": "string",
+            "const": "none",
+            "description": "Present and \"none\" when the data did not clear the lift bar. This is a real answer, not a failure: relay the reasons, do not retry."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Why nothing cleared the bar."
+          },
+          "retry": {
+            "type": "string",
+            "const": "unproductive"
+          },
+          "guidance": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "pending",
+            "description": "The run has not finished. Poll hs_poll_task after retry_after_ms; do not tight-loop."
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "retry_after_ms": {
+            "type": "number"
+          },
+          "deduped": {
+            "type": "boolean",
+            "description": "An identical submit was already in flight; this is that same task, not a second run."
+          },
+          "poll": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string",
+            "description": "Short-TTL signed link to a live status page a human can open."
+          },
+          "stage": {
+            "description": "Leak-firewalled progress — never a partial ranking."
+          },
+          "facts_so_far": {},
+          "upload_url": {
+            "type": "string",
+            "description": "Returned when data.direct_upload was requested; no run was started."
+          },
+          "dataset_id": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "number"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
       },
       "hs_poll_task_input": {
         "type": "object",
@@ -2836,7 +3030,318 @@
       },
       "hs_poll_task_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string",
+            "description": "Reuse this for the free drill-in tools for one hour."
+          },
+          "model_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The fitted scorecard behind this ranking. Pass it to hs_score_entity to decide about a single entity. NULL means the engine minted none for this run — re-run rather than guessing a ref."
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entity_id": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "tier": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "entity_id",
+                "score",
+                "tier"
+              ],
+              "additionalProperties": true
+            },
+            "description": "The ranked page, highest likelihood first."
+          },
+          "top_decile_lift": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "top_factors": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "calibration": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "coefficient": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "coefficient"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "scheme": {
+                    "type": "string"
+                  },
+                  "split_fraction": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "n_train": {
+                    "type": "number"
+                  },
+                  "n_holdout": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "n_reserved_test": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "scheme"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the model was validated. scheme \"none\" means no rows could be held back, and n_holdout is then null (not 0) with a reason."
+          },
+          "gate_verdicts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The engine-recorded gate decisions behind this answer."
+          },
+          "leak_guard": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "column",
+                    "reason"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Columns quarantined as likely target leakage, each with a plain-English reason. NULL means there was no finding (honest-null) — never that leakage was checked and found clean."
+          },
+          "entity_replication": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "n_rows": {
+                    "type": "number"
+                  },
+                  "n_entities": {
+                    "type": "number"
+                  },
+                  "median_rows_per_entity": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "share_repeated": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "scored_as": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "n_rows",
+                  "n_entities",
+                  "median_rows_per_entity",
+                  "share_repeated",
+                  "scored_as"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The SHAPE of the data behind this ranking. n_rows far above n_entities means the same entity sat on many rows — which leak_guard cannot tell you, because it catches a leaky COLUMN, not a leaky SPLIT."
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "k": {
+                "type": "number"
+              },
+              "offset": {
+                "type": "number"
+              },
+              "returned": {
+                "type": "number"
+              },
+              "total_ranked": {
+                "type": "number"
+              },
+              "next_offset": {
+                "type": "number"
+              },
+              "clamped": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "k",
+              "offset",
+              "returned",
+              "total_ranked"
+            ],
+            "additionalProperties": true
+          },
+          "next": {
+            "description": "What you can do with this ranking, and which of those cost nothing."
+          },
+          "leak_warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Local heuristic pre-flags of obviously post-outcome column names. Not a guarantee, and not a substitute for leak_guard."
+          },
+          "disclaimer": {
+            "type": "string",
+            "description": "Present on an acknowledged regulated-domain run. Surface it to the user."
+          },
+          "reading": {},
+          "result": {
+            "type": "string",
+            "const": "none",
+            "description": "Present and \"none\" when the data did not clear the lift bar. This is a real answer, not a failure: relay the reasons, do not retry."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Why nothing cleared the bar."
+          },
+          "retry": {
+            "type": "string",
+            "const": "unproductive"
+          },
+          "guidance": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "const": "pending",
+            "description": "The run has not finished. Poll hs_poll_task after retry_after_ms; do not tight-loop."
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "retry_after_ms": {
+            "type": "number"
+          },
+          "deduped": {
+            "type": "boolean",
+            "description": "An identical submit was already in flight; this is that same task, not a second run."
+          },
+          "poll": {
+            "type": "string"
+          },
+          "status_url": {
+            "type": "string",
+            "description": "Short-TTL signed link to a live status page a human can open."
+          },
+          "stage": {
+            "description": "Leak-firewalled progress — never a partial ranking."
+          },
+          "facts_so_far": {},
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
       },
       "hs_model_quality_input": {
         "type": "object",
@@ -2854,7 +3359,149 @@
       },
       "hs_model_quality_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string"
+          },
+          "top_decile_lift": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "calibration_error": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "scheme": {
+                    "type": "string"
+                  },
+                  "split_fraction": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "n_train": {
+                    "type": "number"
+                  },
+                  "n_holdout": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "n_reserved_test": {
+                    "type": [
+                      "number",
+                      "null"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "scheme"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the model was validated. scheme \"none\" means no rows could be held back, and n_holdout is then null (not 0) with a reason."
+          },
+          "lift_curve": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "decile": {
+                      "type": "number"
+                    },
+                    "cum_lift": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "decile",
+                    "cum_lift"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Relative cumulative lift per decile. Null when the engine reported no curve."
+          },
+          "leak_guard": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "column": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "column",
+                    "reason"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Columns quarantined as likely target leakage, each with a plain-English reason. NULL means there was no finding (honest-null) — never that leakage was checked and found clean."
+          },
+          "gate_verdicts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The engine-recorded gate decisions behind this answer."
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
       },
       "hs_explain_drivers_input": {
         "type": "object",
@@ -2872,7 +3519,116 @@
       },
       "hs_explain_drivers_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string"
+          },
+          "association_not_causal": {
+            "type": "boolean",
+            "const": true
+          },
+          "framing": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "object",
+            "properties": {
+              "found": {
+                "type": "boolean"
+              },
+              "conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "feature": {
+                      "type": "string"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "higher",
+                        "lower",
+                        "different"
+                      ]
+                    },
+                    "threshold": {
+                      "type": [
+                        "number",
+                        "null"
+                      ]
+                    },
+                    "operator": {
+                      "type": "string",
+                      "description": "Build your filter from THIS and missing_values, never from the direction word — the boundary is asymmetric."
+                    },
+                    "missing_values": {
+                      "type": "string"
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "category_match": {
+                      "type": "string",
+                      "enum": [
+                        "is_one_of",
+                        "is_not_one_of"
+                      ],
+                      "description": "Read literally and never drop the negation: \"is_not_one_of\" names the opposite cohort from \"is_one_of\"."
+                    }
+                  },
+                  "required": [
+                    "feature",
+                    "direction",
+                    "threshold"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "coverage": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "lift": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "found"
+            ],
+            "additionalProperties": true,
+            "description": "ONE joint pattern. Read the conditions as a single combination; never rank them or report one alone."
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
       },
       "hs_explain_levers_input": {
         "type": "object",
@@ -2900,7 +3656,108 @@
       },
       "hs_explain_levers_output": {
         "type": "object",
-        "description": "owned by packages/mcp"
+        "properties": {
+          "ranking_ref": {
+            "type": "string"
+          },
+          "association_not_causal": {
+            "type": "boolean",
+            "const": true,
+            "description": "Always true. Levers are what the model associates with a different outcome, never proven interventions."
+          },
+          "framing": {
+            "type": "string"
+          },
+          "levers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entity_id": {
+                  "type": "string"
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "feature": {
+                        "type": "string"
+                      },
+                      "direction": {
+                        "type": "string",
+                        "enum": [
+                          "increase",
+                          "decrease",
+                          "change"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "feature",
+                      "direction"
+                    ],
+                    "additionalProperties": true
+                  }
+                },
+                "magnitude": {
+                  "type": "string",
+                  "enum": [
+                    "substantial",
+                    "notable",
+                    "slight"
+                  ]
+                },
+                "likelihood_direction": {
+                  "type": "string",
+                  "enum": [
+                    "lower",
+                    "higher",
+                    "unchanged"
+                  ],
+                  "description": "Which way this change moves PREDICTED LIKELIHOOD. A fact, not a recommendation, and NOT fixed to \"lower\" — read it per lever."
+                },
+                "association_not_causal": {
+                  "type": "boolean",
+                  "const": true
+                }
+              },
+              "required": [
+                "entity_id",
+                "changes",
+                "magnitude",
+                "likelihood_direction",
+                "association_not_causal"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "reason": {
+            "type": "string",
+            "description": "Present only when levers is empty, saying which honest-empty case this is."
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
       },
       "hs_context_brief_input": {
         "type": "object",
