@@ -1,0 +1,31 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # Required. Red until the product publishes the real schemas for the eight existing tools.
+      - run: python scripts/check_spec.py
+      # Compares the committed spec with the published one for this contract version.
+      - run: scripts/pull_spec.sh 2.0.0
+        continue-on-error: true   # turn required once the product endpoint exists
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pytest hs-verify || pip install pytest cryptography
+      - run: cd python && PYTHONPATH=. python -m pytest -q
+  skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          for f in skills/*/SKILL.md; do
+            head -1 "$f" | grep -q '^---$' || { echo "$f: missing frontmatter"; exit 1; }
+            grep -q '^name:' "$f" && grep -q '^description:' "$f" || { echo "$f: frontmatter needs name + description"; exit 1; }
+          done; echo skills ok
