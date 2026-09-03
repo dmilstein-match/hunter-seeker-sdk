@@ -398,7 +398,7 @@
       "post": {
         "operationId": "hs_score_entity",
         "summary": "Score one entity at decision time",
-        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is byte-identical to what the originating run would have assigned this row: the scorecard is a cache of a deterministic fit, not a second model. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on (columns must match). Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity.",
+        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is the one the originating run assigned this row, from the same fitted scorecard — a cache of a deterministic fit, not a second model. It can differ in the last bit of the float (measured: 7 of 12 entities identical, the rest by one ULP, never more) because the run scores the whole table at once while this scores one row; the band, the reasons and the ordering are unaffected. Do not compare two scores for exact equality — compare bands. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on (columns must match). Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity.",
         "tags": [
           "decide"
         ],
@@ -1395,15 +1395,15 @@
     "/v1/verify-verdict": {
       "post": {
         "operationId": "hs_verify_verdict",
-        "summary": "Verify a Verdict's signature (keyless)",
-        "description": "Free; no API key needed; no engine run. Check that a Verdict was issued by Hunter-Seeker and has not been altered. Pass the verdict object and its signature exactly as received. Returns status: valid | invalid_signature | expired | unknown_key — and nothing else, so the endpoint cannot be probed. Best for: an approval step that must prove the score was not authored by the agent; an auditor; another vendor's agent. The same check runs offline with the open-source libraries hs-verify (pip) and @hunter-seeker/verify (npm) against the public keys at hunter-seeker.net/.well-known/jwks.json. Common mistakes: re-serialising the verdict before verifying (pass the object, the verifier canonicalises it — RFC 8785); treating 'expired' as valid — an expired verdict is re-scored, never reused.",
+        "summary": "Verify a Verdict's signature",
+        "description": "Free; no engine run. Check that a Verdict was issued by Hunter-Seeker and has not been altered. Verification is credential-free on the REST endpoint POST /v1/verify-verdict and in the published hs-verify / @hunter-seeker/verify libraries, which check a signature against the public JWKS with no server at all. Over MCP it still needs a credential like every other tool, because MCP authenticates the whole connection rather than each call — so hand a reviewer the REST endpoint or the library, not an MCP session.  Pass the verdict object and its signature exactly as received. Returns status: valid | invalid_signature | expired | unknown_key — and nothing else, so the endpoint cannot be probed. Best for: an approval step that must prove the score was not authored by the agent; an auditor; another vendor's agent. The same check runs offline with the open-source libraries hs-verify (pip) and @hunter-seeker/verify (npm) against the public keys at hunter-seeker.net/.well-known/jwks.json. Common mistakes: re-serialising the verdict before verifying (pass the object, the verifier canonicalises it — RFC 8785); treating 'expired' as valid — an expired verdict is re-scored, never reused.",
         "tags": [
           "prove"
         ],
         "x-hs-cost": "free",
         "x-hs-agent-action": true,
         "x-mcp-annotations": {
-          "title": "Verify a Verdict's signature (keyless)",
+          "title": "Verify a Verdict's signature",
           "readOnlyHint": true,
           "destructiveHint": false,
           "idempotentHint": true,
@@ -1419,273 +1419,19 @@
                 "additionalProperties": false,
                 "properties": {
                   "verdict": {
-                    "$id": "https://hunter-seeker.net/schemas/verdict.json",
                     "type": "object",
-                    "additionalProperties": false,
+                    "additionalProperties": true,
                     "properties": {
                       "verdict_id": {
                         "type": "string"
                       },
                       "kind": {
-                        "type": "string",
-                        "enum": [
-                          "ranking",
-                          "entity_score"
-                        ]
-                      },
-                      "analysis_id": {
-                        "type": "string",
-                        "pattern": "^sk1_[0-9a-f]{32}$"
-                      },
-                      "model_ref": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "ranking_ref": {
-                        "type": [
-                          "string",
-                          "null"
-                        ]
-                      },
-                      "engine_version": {
                         "type": "string"
-                      },
-                      "core_hash": {
-                        "type": "string"
-                      },
-                      "contract_hash": {
-                        "type": "string"
-                      },
-                      "tool_contract_version": {
-                        "type": "string"
-                      },
-                      "dataset_content_hash": {
-                        "type": "string"
-                      },
-                      "spec_hash": {
-                        "type": "string"
-                      },
-                      "computed_at": {
-                        "type": "string",
-                        "format": "date-time"
-                      },
-                      "expires_at": {
-                        "type": "string",
-                        "format": "date-time"
-                      },
-                      "issuer": {
-                        "type": "string"
-                      },
-                      "on_behalf_of": {
-                        "oneOf": [
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                              "principal_id": {
-                                "type": "string",
-                                "minLength": 1
-                              },
-                              "principal_type": {
-                                "type": "string",
-                                "enum": [
-                                  "user",
-                                  "service"
-                                ]
-                              },
-                              "source": {
-                                "type": "string",
-                                "enum": [
-                                  "oauth",
-                                  "obo",
-                                  "key"
-                                ]
-                              }
-                            },
-                            "required": [
-                              "principal_id",
-                              "principal_type",
-                              "source"
-                            ]
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "agent": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "client_id": {
-                            "type": "string"
-                          },
-                          "key_id": {
-                            "type": "string"
-                          }
-                        }
-                      },
-                      "outcome": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "properties": {
-                          "column": {
-                            "type": "string"
-                          },
-                          "polarity": {
-                            "type": "string",
-                            "enum": [
-                              "adverse",
-                              "desirable",
-                              "neutral"
-                            ]
-                          }
-                        },
-                        "required": [
-                          "column",
-                          "polarity"
-                        ]
-                      },
-                      "subject_kind": {
-                        "type": "string",
-                        "enum": [
-                          "person",
-                          "org",
-                          "object",
-                          "event",
-                          "other"
-                        ]
-                      },
-                      "acknowledge_decision_support": {
-                        "type": "boolean"
-                      },
-                      "trust": {
-                        "type": "object"
-                      },
-                      "entities": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "properties": {
-                            "entity_id": {
-                              "type": "string"
-                            },
-                            "score": {
-                              "type": "number"
-                            },
-                            "band": {
-                              "type": "string",
-                              "enum": [
-                                "act",
-                                "escalate",
-                                "refuse"
-                              ]
-                            },
-                            "band_reason": {
-                              "type": "string"
-                            },
-                            "max_autonomy": {
-                              "type": "string",
-                              "enum": [
-                                "L0",
-                                "L1",
-                                "L2",
-                                "L3",
-                                "L4"
-                              ]
-                            },
-                            "principal_reasons": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "properties": {
-                                  "feature_label": {
-                                    "type": "string"
-                                  },
-                                  "direction": {
-                                    "type": "string",
-                                    "enum": [
-                                      "increase",
-                                      "decrease",
-                                      "change"
-                                    ]
-                                  },
-                                  "magnitude": {
-                                    "type": "string",
-                                    "enum": [
-                                      "substantial",
-                                      "notable",
-                                      "slight"
-                                    ]
-                                  },
-                                  "likelihood_direction": {
-                                    "type": "string",
-                                    "enum": [
-                                      "lower",
-                                      "higher",
-                                      "unchanged"
-                                    ]
-                                  },
-                                  "association_not_causal": {
-                                    "type": "boolean",
-                                    "const": true
-                                  }
-                                },
-                                "required": [
-                                  "feature_label",
-                                  "direction",
-                                  "association_not_causal"
-                                ]
-                              }
-                            }
-                          },
-                          "required": [
-                            "entity_id",
-                            "score",
-                            "band",
-                            "max_autonomy"
-                          ]
-                        }
-                      },
-                      "honest_empty": {
-                        "oneOf": [
-                          {
-                            "type": "null"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "reasons": {
-                                "type": "array",
-                                "items": {
-                                  "type": "string"
-                                }
-                              }
-                            }
-                          }
-                        ]
-                      },
-                      "provenance_class": {
-                        "type": "string",
-                        "const": "finding"
                       }
                     },
                     "required": [
                       "verdict_id",
-                      "kind",
-                      "analysis_id",
-                      "engine_version",
-                      "core_hash",
-                      "computed_at",
-                      "expires_at",
-                      "issuer",
-                      "outcome",
-                      "entities",
-                      "provenance_class"
+                      "kind"
                     ]
                   },
                   "signature": {
@@ -2056,6 +1802,116 @@
                     "model_ref",
                     "live",
                     "live_floor"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drift-status": {
+      "post": {
+        "operationId": "hs_drift_status",
+        "summary": "Has the pattern moved?",
+        "description": "Free; no engine run. For a model_ref that has been refit at least once (hs_rank_topk with refit_of), compare the current pattern with the prior: pattern is unchanged | changed | no_prior; pattern_diff names conditions added or removed and thresholds that moved (feature + direction only — values never leave the engine); cusum_fired says whether the calibration coefficient drifted; recommendation is keep | refit | abandon. One honest-empty on refresh is NOT drift — abandon requires two consecutive honest-empties on the same analysis. Never infer drift by comparing two briefs yourself; this tool is the engine's comparison. Common mistakes: refitting on 'changed' alone — refit is recommended only when the coefficient also drifted or across ≥ 2 cycles.",
+        "tags": [
+          "judge"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": true,
+        "x-mcp-annotations": {
+          "title": "Has the pattern moved?",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "model_ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "model_ref"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "pattern": {
+                      "type": "string",
+                      "enum": [
+                        "unchanged",
+                        "changed",
+                        "no_prior"
+                      ]
+                    },
+                    "pattern_diff": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "cusum_fired": {
+                      "type": "boolean"
+                    },
+                    "cycles_observed": {
+                      "type": "integer"
+                    },
+                    "drifted_cycles": {
+                      "type": "integer"
+                    },
+                    "recommendation": {
+                      "type": "string",
+                      "enum": [
+                        "keep",
+                        "refit",
+                        "abandon"
+                      ]
+                    },
+                    "consecutive_honest_empty": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "pattern",
+                    "cusum_fired",
+                    "recommendation"
                   ]
                 }
               }
@@ -2620,6 +2476,11 @@
             "type": "boolean",
             "description": "Required true when subject_kind is \"person\" and the outcome is in a regulated domain (hiring, credit, education, insurance, benefits, justice). Confirms results are decision-support with human review."
           },
+          "refit_of": {
+            "type": "string",
+            "pattern": "^mr1_[0-9a-f]{32}$",
+            "description": "A prior model_ref of this SAME analysis. Declares this run a refresh: the response carries drift and hs_drift_status has a prior to compare. An unknown, expired or foreign ref is refused before the run starts, so nothing is billed."
+          },
           "idempotency_key": {
             "type": "string",
             "maxLength": 120,
@@ -2716,6 +2577,27 @@
                     "string",
                     "null"
                   ]
+                },
+                "band": {
+                  "type": "string",
+                  "enum": [
+                    "act",
+                    "escalate",
+                    "refuse"
+                  ]
+                },
+                "band_reason": {
+                  "type": "string"
+                },
+                "max_autonomy": {
+                  "type": "string",
+                  "enum": [
+                    "L0",
+                    "L1",
+                    "L2",
+                    "L3",
+                    "L4"
+                  ]
                 }
               },
               "required": [
@@ -2725,7 +2607,102 @@
               ],
               "additionalProperties": true
             },
-            "description": "The ranked page, highest likelihood first."
+            "description": "The ranked page, highest likelihood first. band/max_autonomy say how much rope each entity earns; compare bands, never raw scores."
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The signed ranking Verdict. Hand it with the signature to hs_verify_verdict, or verify it offline against the public JWKS."
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "protected": {
+                    "type": "string"
+                  },
+                  "signature": {
+                    "type": "string"
+                  },
+                  "kid": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "protected",
+                  "signature",
+                  "kid"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drift": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "enum": [
+                      "unchanged",
+                      "changed",
+                      "no_prior"
+                    ]
+                  },
+                  "pattern_diff": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cusum_fired": {
+                    "type": "boolean"
+                  },
+                  "cycles_observed": {
+                    "type": "number"
+                  },
+                  "drifted_cycles": {
+                    "type": "number"
+                  },
+                  "recommendation": {
+                    "type": "string",
+                    "enum": [
+                      "keep",
+                      "refit",
+                      "abandon"
+                    ]
+                  },
+                  "consecutive_honest_empty": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only when this run passed refit_of. Labels and directions only — never the values that moved."
           },
           "top_decile_lift": {
             "type": [
@@ -3058,6 +3035,27 @@
                     "string",
                     "null"
                   ]
+                },
+                "band": {
+                  "type": "string",
+                  "enum": [
+                    "act",
+                    "escalate",
+                    "refuse"
+                  ]
+                },
+                "band_reason": {
+                  "type": "string"
+                },
+                "max_autonomy": {
+                  "type": "string",
+                  "enum": [
+                    "L0",
+                    "L1",
+                    "L2",
+                    "L3",
+                    "L4"
+                  ]
                 }
               },
               "required": [
@@ -3067,7 +3065,102 @@
               ],
               "additionalProperties": true
             },
-            "description": "The ranked page, highest likelihood first."
+            "description": "The ranked page, highest likelihood first. band/max_autonomy say how much rope each entity earns; compare bands, never raw scores."
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The signed ranking Verdict. Hand it with the signature to hs_verify_verdict, or verify it offline against the public JWKS."
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "protected": {
+                    "type": "string"
+                  },
+                  "signature": {
+                    "type": "string"
+                  },
+                  "kid": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "protected",
+                  "signature",
+                  "kid"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "drift": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "enum": [
+                      "unchanged",
+                      "changed",
+                      "no_prior"
+                    ]
+                  },
+                  "pattern_diff": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "cusum_fired": {
+                    "type": "boolean"
+                  },
+                  "cycles_observed": {
+                    "type": "number"
+                  },
+                  "drifted_cycles": {
+                    "type": "number"
+                  },
+                  "recommendation": {
+                    "type": "string",
+                    "enum": [
+                      "keep",
+                      "refit",
+                      "abandon"
+                    ]
+                  },
+                  "consecutive_honest_empty": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Present only when this run passed refit_of. Labels and directions only — never the values that moved."
           },
           "top_decile_lift": {
             "type": [
