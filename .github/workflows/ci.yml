@@ -20,6 +20,32 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install pytest hs-verify || pip install pytest cryptography
       - run: cd python && PYTHONPATH=. python -m pytest -q
+  n8n:
+    # The community node is the ONLY Hunter-Seeker surface a workflow builder can reach without
+    # writing code, so a gap in it is a gap in the product. It shipped covering five of fifteen
+    # operations, and the five did not include attest_action or explain_levers — meaning an
+    # integrator could score and report but never attest, and never obtain the lever_token an
+    # attestation needs. The governance loop the product exists to provide was unreachable from
+    # its own integration, and nothing failed.
+    #
+    # `--strict-node` makes that a build failure rather than something somebody notices.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: cd n8n && npm ci && npm run build
+      - name: the node's request bodies are the ones the endpoints accept
+        # Path parity is not enough: a node that POSTs to the right URL with the wrong shape is a
+        # 422 the user reads as "Hunter-Seeker is broken".
+        run: cd n8n && npm test
+      - name: three-way surface parity (spec / MCP / node)
+        # HS_KEY is optional; without it the live MCP leg is skipped and the spec-vs-node legs
+        # still run. Set it as a repository secret to make all three legs live.
+        env:
+          HS_KEY: ${{ secrets.HS_TEST_KEY }}
+        run: node scripts/hs-surface-parity.mjs n8n/dist/nodes/HunterSeeker/HunterSeeker.node.js --strict-node
+
   skills:
     runs-on: ubuntu-latest
     steps:

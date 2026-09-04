@@ -20,7 +20,8 @@
     "n8n-workflow": "*"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "node --test test/*.test.mjs"
   },
   "files": [
     "dist",
