@@ -3,10 +3,10 @@ import type { IAuthenticateGeneric, ICredentialTestRequest, ICredentialType, INo
 export class HunterSeekerApi implements ICredentialType {
   name = "hunterSeekerApi";
   displayName = "Hunter-Seeker API";
-  documentationUrl = "https://hunter-seeker.net/for-agents";
+  documentationUrl = "https://hunter-seeker.io/for-agents";
   properties: INodeProperties[] = [
     { displayName: "Machine key", name: "apiKey", type: "string", typeOptions: { password: true }, default: "", description: "hsk_live_… or hsk_test_… (test keys reach only the sample datasets)" },
-    { displayName: "Base URL", name: "baseUrl", type: "string", default: "https://hunter-seeker.net/api" },
+    { displayName: "Base URL", name: "baseUrl", type: "string", default: "https://hunter-seeker.io/api" },
   ];
   authenticate: IAuthenticateGeneric = { type: "generic", properties: { headers: { Authorization: "=Bearer {{$credentials.apiKey}}" } } };
   test: ICredentialTestRequest = { request: { baseURL: "={{$credentials.baseUrl}}", url: "/v1/describe-capabilities", method: "POST", body: {} } };

@@ -19,7 +19,7 @@ function ctx(params, items = [{ json: {} }]) {
   const self = {
     getInputData: () => items,
     getExecutionId: () => "exec-1",
-    getCredentials: async () => ({ baseUrl: "https://hunter-seeker.net/api" }),
+    getCredentials: async () => ({ baseUrl: "https://hunter-seeker.io/api" }),
     getNodeParameter: (name, _i, fallback) => (name in params ? params[name] : fallback),
     helpers: {
       httpRequestWithAuthentication: {

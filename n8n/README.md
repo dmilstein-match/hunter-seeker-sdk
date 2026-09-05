@@ -36,7 +36,7 @@ Wait → action. See `examples/score-then-gate.json`.
 
 **Learn:** Rank → Explain levers → hold out a random 10–20% → Attest (treated only) → Report
 outcome (BOTH arms) → Action evidence. See `examples/close-the-loop.json`, and read
-[the control-arm page](https://hunter-seeker.net/docs/control-arm) first — without the holdout the
+[the control-arm page](https://hunter-seeker.io/docs/control-arm) first — without the holdout the
 evidence is observational, because the acted group was selected by the model's own score.
 
 **Readings.** A `reading` reduces an event table to one row per entity before ranking, and needs
@@ -44,7 +44,7 @@ an async source (`dataset_id` or `fetch_url`) — so it is Rank → Poll, not a 
 Describe capabilities for the published kinds, their roles and their param bounds.
 
 Zero-build alternative today: n8n's built-in **MCP Client Tool** node pointed at
-`https://hunter-seeker.net/api/mcp` with a Bearer credential.
+`https://hunter-seeker.io/api/mcp` with a Bearer credential.
 
 Publishing: from 2026-05-01 n8n requires community nodes to be published via the GitHub
 Action with a provenance statement; then submit for verification. A workflow JSON example is

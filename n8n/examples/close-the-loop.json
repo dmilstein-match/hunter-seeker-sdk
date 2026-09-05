@@ -3,8 +3,8 @@
   "meta": {
     "why": "The score-then-gate example stops at the decision. This one is the half that was unreachable until the node covered all fifteen operations: obtaining a lever_token, attesting that you acted on it, reporting what actually happened, and asking whether acting worked. Every step here is FREE — only Rank costs a run.",
     "read_first": [
-      "https://hunter-seeker.net/docs/control-arm — why a random holdout is what makes the evidence mean anything",
-      "https://hunter-seeker.net/docs/two-loops — this workflow is Loop B"
+      "https://hunter-seeker.io/docs/control-arm — why a random holdout is what makes the evidence mean anything",
+      "https://hunter-seeker.io/docs/two-loops — this workflow is Loop B"
     ],
     "expect": "Action evidence returns live: null until each cell has 30 reported outcomes, and flags small_n below 100. That is the floor working, not a failure — report it as 'not enough evidence yet', never as 'no effect'."
   },

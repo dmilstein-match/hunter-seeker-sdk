@@ -20,8 +20,8 @@
 
 import { readFileSync } from "node:fs";
 
-const SPEC = process.env.HS_OPENAPI ?? "https://hunter-seeker.net/docs/openapi.json";
-const BASE = process.env.HS_BASE ?? "https://hunter-seeker.net/api";
+const SPEC = process.env.HS_OPENAPI ?? "https://hunter-seeker.io/docs/openapi.json";
+const BASE = process.env.HS_BASE ?? "https://hunter-seeker.io/api";
 const KEY = process.env.HS_KEY;
 
 const args = process.argv.slice(2);

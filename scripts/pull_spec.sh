@@ -3,7 +3,7 @@
 # Usage: scripts/pull_spec.sh 2.0.0
 set -euo pipefail
 VER="${1:?tool contract version, e.g. 2.0.0}"
-BASE="${HS_SPEC_BASE:-https://hunter-seeker.net/api/docs}"
+BASE="${HS_SPEC_BASE:-https://hunter-seeker.io/api/docs}"
 tmp=$(mktemp -d)
 curl -fsSL "$BASE/openapi.json?version=$VER" -o "$tmp/openapi.json"
 curl -fsSL "$BASE/openapi-agent-actions.json?version=$VER" -o "$tmp/openapi-agent-actions.json"

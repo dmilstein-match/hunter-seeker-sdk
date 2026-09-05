@@ -10,7 +10,7 @@ readme = "README.md"
 [project.urls]
 Homepage = "https://github.com/dmilstein-match/hunter-seeker-sdk"
 Source = "https://github.com/dmilstein-match/hunter-seeker-sdk"
-Documentation = "https://hunter-seeker.net/docs"
+Documentation = "https://hunter-seeker.io/docs"
 Changelog = "https://github.com/dmilstein-match/hunter-seeker-sdk/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]

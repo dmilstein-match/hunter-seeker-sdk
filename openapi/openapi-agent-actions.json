@@ -5,16 +5,16 @@
     "version": "2.0.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
-      "url": "https://hunter-seeker.net/for-agents"
+      "url": "https://hunter-seeker.io/for-agents"
     },
     "license": {
       "name": "Terms",
-      "url": "https://hunter-seeker.net/terms"
+      "url": "https://hunter-seeker.io/terms"
     }
   },
   "servers": [
     {
-      "url": "https://hunter-seeker.net/api"
+      "url": "https://hunter-seeker.io/api"
     }
   ],
   "tags": [
@@ -267,7 +267,7 @@
                       ]
                     },
                     "verdict": {
-                      "$id": "https://hunter-seeker.net/schemas/verdict.json",
+                      "$id": "https://hunter-seeker.io/schemas/verdict.json",
                       "type": "object",
                       "additionalProperties": false,
                       "properties": {
@@ -593,7 +593,7 @@
       "post": {
         "operationId": "hs_verify_verdict",
         "summary": "Verify a Verdict's signature",
-        "description": "Free; no engine run. Check that a Verdict was issued by Hunter-Seeker and has not been altered. Verification is credential-free on the REST endpoint POST /v1/verify-verdict and in the published hs-verify / @hunter-seeker/verify libraries, which check a signature against the public JWKS with no server at all. Over MCP it still needs a credential like every other tool, because MCP authenticates the whole connection rather than each call — so hand a reviewer the REST endpoint or the library, not an MCP session.  Pass the verdict object and its signature exactly as received. Returns status: valid | invalid_signature | expired | unknown_key — and nothing else, so the endpoint cannot be probed. Best for: an approval step that must prove the score was not authored by the agent; an auditor; another vendor's agent. The same check runs offline with the open-source libraries hs-verify (pip) and @hunter-seeker/verify (npm) against the public keys at hunter-seeker.net/.well-known/jwks.json. Common mistakes: re-serialising the verdict before verifying (pass the object, the verifier canonicalises it — RFC 8785); treating 'expired' as valid — an expired verdict is re-scored, never reused.",
+        "description": "Free; no engine run. Check that a Verdict was issued by Hunter-Seeker and has not been altered. Verification is credential-free on the REST endpoint POST https://hunter-seeker.io/api/v1/verify-verdict and in the published hs-verify / @hunter-seeker/verify libraries, which check a signature against the public JWKS with no server at all. Over MCP it still needs a credential like every other tool, because MCP authenticates the whole connection rather than each call — so hand a reviewer the REST endpoint or the library, not an MCP session.  Pass the verdict object and its signature exactly as received. Returns status: valid | invalid_signature | expired | unknown_key — and nothing else, so the endpoint cannot be probed. Best for: an approval step that must prove the score was not authored by the agent; an auditor; another vendor's agent. The same check runs offline with the open-source libraries hs-verify (pip) and @hunter-seeker/verify (npm) against the public keys at hunter-seeker.io/.well-known/jwks.json. Common mistakes: re-serialising the verdict before verifying (pass the object, the verifier canonicalises it — RFC 8785); treating 'expired' as valid — an expired verdict is re-scored, never reused.",
         "tags": [
           "prove"
         ],
@@ -938,8 +938,8 @@
         "type": "oauth2",
         "flows": {
           "authorizationCode": {
-            "authorizationUrl": "https://hunter-seeker.net/oauth/authorize",
-            "tokenUrl": "https://hunter-seeker.net/oauth/token",
+            "authorizationUrl": "https://hunter-seeker.io/oauth/authorize",
+            "tokenUrl": "https://hunter-seeker.io/oauth/token",
             "scopes": {
               "read": "interrogate, score, verify",
               "run": "rank, refit, schedule",
@@ -998,7 +998,7 @@
         ]
       },
       "Verdict": {
-        "$id": "https://hunter-seeker.net/schemas/verdict.json",
+        "$id": "https://hunter-seeker.io/schemas/verdict.json",
         "type": "object",
         "additionalProperties": false,
         "properties": {
@@ -1442,6 +1442,15 @@
             "type": "boolean",
             "description": "Required true when subject_kind is \"person\" and the outcome is in a regulated domain (hiring, credit, education, insurance, benefits, justice). Confirms results are decision-support with human review."
           },
+          "outcome_is_desirable": {
+            "type": "boolean",
+            "description": "TRUE when the outcome is one you WANT (converted, renewed, paid_in_full); FALSE when it is one you want to avoid (churned, defaulted, failed). Omit only if you genuinely do not know — the engine then guesses from the outcome column NAME, which is unreliable for arbitrary names, and a wrong guess inverts every lever direction."
+          },
+          "partitions": {
+            "type": "number",
+            "const": 2,
+            "description": "Split the table BY ENTITY into two disjoint draws plus a reserved batch, rank each, and return clearance_frequency, the conditions that recur across both, and confidence_tier \"borderline\" when exactly one clears. Near the bar a single verdict is a coin flip — measured: two entity-disjoint halves both came back empty while the pooled corpus cleared at 1.89. Billed as ONE run. Requires entity_column, and ~2,000 rows in practice: each draw must independently clear the holdout gate, so on small tables both draws come back unjudgeable rather than wrong."
+          },
           "refit_of": {
             "type": "string",
             "pattern": "^mr1_[0-9a-f]{32}$",
@@ -1669,6 +1678,155 @@
               }
             ],
             "description": "Present only when this run passed refit_of. Labels and directions only — never the values that moved."
+          },
+          "verdict_withheld": {
+            "type": "string",
+            "description": "Why a signed Verdict exists for this ranking but is not included. A Verdict cannot be sanitized without breaking the signature that makes it worth having, so one carrying text that is unsafe to relay into an agent context is withheld whole. The ranking, the bands and every drill-in tool are unaffected."
+          },
+          "partitions": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "n_draws": {
+                    "type": "number"
+                  },
+                  "split": {
+                    "type": "string"
+                  },
+                  "draws": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "draw": {
+                          "type": "string"
+                        },
+                        "cleared": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "cleared",
+                            "below_bar",
+                            "no_holdout"
+                          ],
+                          "description": "\"no_holdout\" means the draw was too small for the engine to hold rows back, so the bar was never applied — NOT that it failed."
+                        },
+                        "trust": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "draw",
+                        "cleared",
+                        "reason",
+                        "trust"
+                      ],
+                      "additionalProperties": true
+                    }
+                  },
+                  "reserved": {
+                    "type": "object",
+                    "properties": {
+                      "n_entities": {
+                        "type": "number"
+                      },
+                      "analysed": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "n_entities",
+                      "analysed"
+                    ],
+                    "additionalProperties": true
+                  },
+                  "clearance_frequency": {
+                    "type": "object",
+                    "properties": {
+                      "cleared": {
+                        "type": "number"
+                      },
+                      "of": {
+                        "type": "number"
+                      },
+                      "judgeable": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "cleared",
+                      "of",
+                      "judgeable"
+                    ],
+                    "additionalProperties": true,
+                    "description": "Near the bar this, not a single verdict, is the label. `judgeable` counts the draws the bar could actually be applied to."
+                  },
+                  "recurring_conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "feature": {
+                          "type": "string"
+                        },
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "higher",
+                            "lower",
+                            "different"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "feature",
+                        "direction"
+                      ],
+                      "additionalProperties": true
+                    },
+                    "description": "Conditions present in BOTH cleared draws, same feature and same direction. Adopt only these. Empty unless both draws cleared."
+                  },
+                  "confidence_tier": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "borderline"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "\"borderline\" when exactly one draw cleared — re-partition and read the frequency; do not collect more and do not stop."
+                  },
+                  "next": {
+                    "type": "string"
+                  },
+                  "base_draw": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "n_draws",
+                  "split",
+                  "draws",
+                  "reserved",
+                  "clearance_frequency",
+                  "recurring_conditions",
+                  "confidence_tier",
+                  "next"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "top_decile_lift": {
             "type": [
@@ -2127,6 +2285,155 @@
               }
             ],
             "description": "Present only when this run passed refit_of. Labels and directions only — never the values that moved."
+          },
+          "verdict_withheld": {
+            "type": "string",
+            "description": "Why a signed Verdict exists for this ranking but is not included. A Verdict cannot be sanitized without breaking the signature that makes it worth having, so one carrying text that is unsafe to relay into an agent context is withheld whole. The ranking, the bands and every drill-in tool are unaffected."
+          },
+          "partitions": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "n_draws": {
+                    "type": "number"
+                  },
+                  "split": {
+                    "type": "string"
+                  },
+                  "draws": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "draw": {
+                          "type": "string"
+                        },
+                        "cleared": {
+                          "type": "boolean"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "cleared",
+                            "below_bar",
+                            "no_holdout"
+                          ],
+                          "description": "\"no_holdout\" means the draw was too small for the engine to hold rows back, so the bar was never applied — NOT that it failed."
+                        },
+                        "trust": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "draw",
+                        "cleared",
+                        "reason",
+                        "trust"
+                      ],
+                      "additionalProperties": true
+                    }
+                  },
+                  "reserved": {
+                    "type": "object",
+                    "properties": {
+                      "n_entities": {
+                        "type": "number"
+                      },
+                      "analysed": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "n_entities",
+                      "analysed"
+                    ],
+                    "additionalProperties": true
+                  },
+                  "clearance_frequency": {
+                    "type": "object",
+                    "properties": {
+                      "cleared": {
+                        "type": "number"
+                      },
+                      "of": {
+                        "type": "number"
+                      },
+                      "judgeable": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "cleared",
+                      "of",
+                      "judgeable"
+                    ],
+                    "additionalProperties": true,
+                    "description": "Near the bar this, not a single verdict, is the label. `judgeable` counts the draws the bar could actually be applied to."
+                  },
+                  "recurring_conditions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "feature": {
+                          "type": "string"
+                        },
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "higher",
+                            "lower",
+                            "different"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "feature",
+                        "direction"
+                      ],
+                      "additionalProperties": true
+                    },
+                    "description": "Conditions present in BOTH cleared draws, same feature and same direction. Adopt only these. Empty unless both draws cleared."
+                  },
+                  "confidence_tier": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "borderline"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "\"borderline\" when exactly one draw cleared — re-partition and read the frequency; do not collect more and do not stop."
+                  },
+                  "next": {
+                    "type": "string"
+                  },
+                  "base_draw": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "n_draws",
+                  "split",
+                  "draws",
+                  "reserved",
+                  "clearance_frequency",
+                  "recurring_conditions",
+                  "confidence_tier",
+                  "next"
+                ],
+                "additionalProperties": true
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "top_decile_lift": {
             "type": [
@@ -2779,6 +3086,10 @@
                 "association_not_causal": {
                   "type": "boolean",
                   "const": true
+                },
+                "lever_token": {
+                  "type": "string",
+                  "description": "Pass to hs_attest_action, with the entity’s NEW value for the feature, to record that you pulled this lever. Opaque: the target is encrypted inside it, so the threshold never crosses the wire. Absent when the engine minted none for this lever."
                 }
               },
               "required": [
