@@ -2,7 +2,7 @@
 """Refuse to publish an OpenAPI document that still carries placeholder schemas.
 
 The master spec is generated in the PRODUCT repo (the tool definitions are private) and
-published at https://hunter-seeker.net/api/docs/openapi.json. This repo PULLS it by tag
+published at https://hunter-seeker.io/api/docs/openapi.json. This repo PULLS it by tag
 (scripts/pull_spec.sh). A placeholder reads `"description": "owned by packages/mcp"`, and a
 generated SDK built from one would be a lie — so this check is required in CI and blocks release.
 

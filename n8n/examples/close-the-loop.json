@@ -1,0 +1,54 @@
+{
+  "name": "Close the loop — levers, attest, report, evidence",
+  "meta": {
+    "why": "The score-then-gate example stops at the decision. This one is the half that was unreachable until the node covered all fifteen operations: obtaining a lever_token, attesting that you acted on it, reporting what actually happened, and asking whether acting worked. Every step here is FREE — only Rank costs a run.",
+    "read_first": [
+      "https://hunter-seeker.io/docs/control-arm — why a random holdout is what makes the evidence mean anything",
+      "https://hunter-seeker.io/docs/two-loops — this workflow is Loop B"
+    ],
+    "expect": "Action evidence returns live: null until each cell has 30 reported outcomes, and flags small_n below 100. That is the floor working, not a failure — report it as 'not enough evidence yet', never as 'no effect'."
+  },
+  "nodes": [
+    { "name": "Weekly refresh", "type": "n8n-nodes-base.scheduleTrigger", "parameters": { "rule": { "interval": [{ "field": "weeks" }] } } },
+
+    { "name": "Rank (ONE RUN)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
+      "notes": "The only billable step, and it is refunded on an honest-empty. Everything downstream reuses ranking_ref for an hour, free.",
+      "parameters": { "operation": "rank", "dataSource": "datasetId", "datasetId": "sample:saas_churn", "entityColumn": "customer_id", "outcomeColumn": "churned", "subjectKind": "org", "outcomeIsDesirable": "no", "topK": 20 } },
+
+    { "name": "Cleared?", "type": "n8n-nodes-base.if",
+      "notes": "An honest-empty is a SUCCESSFUL terminal result and the run was refunded. Do not retry it — identical inputs return an identical envelope. Record the negative finding and stop for this cycle.",
+      "parameters": { "conditions": { "string": [{ "value1": "={{$json.result}}", "operation": "notEqual", "value2": "none" }] } } },
+
+    { "name": "Log the refusal", "type": "n8n-nodes-base.noOp",
+      "notes": "run.honest_empty — negative knowledge. Relay {{$json.reasons}} to whoever asked; improving the input is the only productive next step." },
+
+    { "name": "Explain levers (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
+      "notes": "This is where lever_token comes from. Without it there is nothing to attest, which is why the five-operation node could not close this loop.",
+      "parameters": { "operation": "levers", "rankingRef": "={{$json.ranking_ref}}", "entityIds": "={{$json.entities.map(e => e.entity_id).join(',')}}" } },
+
+    { "name": "Hold out a control arm", "type": "n8n-nodes-base.code",
+      "notes": "THE step that makes the evidence worth reading. The acted group is selected by the model's own score, so acted-vs-not differences are observational until you randomise. Seeded on the entity id, never on the score.",
+      "parameters": { "jsCode": "const crypto = require('crypto');\nconst SEED = '2026-Q3-winback';\nconst HOLDOUT = 0.15;\nreturn $input.all().map(item => {\n  const id = String(item.json.entity_id);\n  const h = crypto.createHash('sha256').update(`${SEED}:${id}`).digest();\n  const treated = h.readBigUInt64BE(0) / 2n ** 64n >= HOLDOUT;\n  return { json: { ...item.json, treated } };\n});" } },
+
+    { "name": "Treated?", "type": "n8n-nodes-base.if", "parameters": { "conditions": { "boolean": [{ "value1": "={{$json.treated}}", "value2": true }] } } },
+
+    { "name": "Do the play", "type": "n8n-nodes-base.noOp",
+      "notes": "Your own action — the call, the discount, the outreach. The engine returns levers and principal reasons; the play is yours." },
+
+    { "name": "Attest (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
+      "notes": "TREATED ARM ONLY. Only a hash of the lever_token is stored, never the token. post_value is the feature's value AFTER you acted.",
+      "parameters": { "operation": "attest", "modelRef": "={{$json.model_ref}}", "entityId": "={{$json.entity_id}}", "leverToken": "={{$json.lever_token}}", "postValue": "={{$json.post_value}}" } },
+
+    { "name": "Report outcome (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
+      "notes": "BOTH ARMS. Skipping the control arm here is fatal: with no observed outcomes for it there is nothing to compare against. Append-only, and idempotent on event_id, so a retried workflow is safe.",
+      "parameters": { "operation": "report", "modelRef": "={{$json.model_ref}}", "entityId": "={{$json.entity_id}}", "outcome": "={{$json.observed}}" } },
+
+    { "name": "Action evidence (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
+      "notes": "Expect live: null for a while. 30 reported outcomes per cell before a number exists, small_n below 100.",
+      "parameters": { "operation": "evidence", "modelRef": "={{$json.model_ref}}" } },
+
+    { "name": "Drift status (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
+      "notes": "Only meaningful on a run that passed refit_of. Labels and directions only — react to `recommendation`, never to a coefficient you cannot see. On `abandon` (two consecutive honest-empties) stop working this outcome.",
+      "parameters": { "operation": "drift", "modelRef": "={{$json.model_ref}}" } }
+  ]
+}

@@ -1,5 +1,5 @@
 """CrewAI tools. `pip install hunter-seeker[crewai]`. Or point CrewAI at the MCP server:
-    Agent(..., mcps=["https://hunter-seeker.net/api/mcp#hs_score_entity"])
+    Agent(..., mcps=["https://hunter-seeker.io/api/mcp#hs_score_entity"])
 """
 from __future__ import annotations
 

@@ -9,7 +9,7 @@
 > |---|---|
 > | `pip install hs-verify` / `npm install @hunter-seeker/verify` | not on PyPI / npm yet — install from this repo |
 > | `pip install hunter-seeker` | not on PyPI yet — install from this repo |
-> | `https://hunter-seeker.net/api/mcp` and `/.well-known/jwks.json` | not serving yet |
+> | `https://hunter-seeker.io/api/mcp` and `/.well-known/jwks.json` | not serving yet |
 > | `vectors.json` | signed with a **pre-release test key**, not the production one. Run `python scripts/check_live.py --vectors` and it will say so |
 >
 > Everything offline works now: both verifiers agree byte for byte on the shared vectors, and
@@ -41,9 +41,9 @@ hs sample                            # ranks sample:saas_churn (free) and verifi
 
 | You use | Do this |
 |---|---|
-| Claude, Codex, ChatGPT, Cursor, VS Code | add the remote MCP server `https://hunter-seeker.net/api/mcp` — see [docs/install.md](docs/install.md) |
+| Claude, Codex, ChatGPT, Cursor, VS Code | add the remote MCP server `https://hunter-seeker.io/api/mcp` — see [docs/install.md](docs/install.md) |
 | LangGraph / LangChain | `pip install hunter-seeker[langchain]` → `from hunter_seeker.langchain import verdict_tools` |
-| CrewAI | `pip install hunter-seeker[crewai]` or `Agent(mcps=["https://hunter-seeker.net/api/mcp#hs_score_entity"])` |
+| CrewAI | `pip install hunter-seeker[crewai]` or `Agent(mcps=["https://hunter-seeker.io/api/mcp#hs_score_entity"])` |
 | n8n | the **MCP Client Tool** node today; `n8n-nodes-hunter-seeker` (this repo, `n8n/`) once verified |
 | Agentforce, Bedrock AgentCore, Copilot Studio | import `openapi/openapi-agent-actions.json` |
 | anything with HTTP | `openapi/openapi.json` (OpenAPI 3.1) |

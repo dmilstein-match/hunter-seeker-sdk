@@ -21,7 +21,7 @@ def _client() -> Client:
     key = os.environ.get("HS_API_KEY")
     if not key:
         sys.exit("set HS_API_KEY (hsk_test_... reaches the free sample datasets)")
-    return Client(api_key=key, base_url=os.environ.get("HS_BASE_URL", "https://hunter-seeker.net/api"))
+    return Client(api_key=key, base_url=os.environ.get("HS_BASE_URL", "https://hunter-seeker.io/api"))
 
 
 def _propose(path: Path) -> dict:

@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hunter-seeker",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Hunter-Seeker Verdict layer for n8n: score, rank, verify, report outcome, drift.",
   "license": "MIT",
   "keywords": [
@@ -20,7 +20,8 @@
     "n8n-workflow": "*"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "node --test test/*.test.mjs"
   },
   "files": [
     "dist",

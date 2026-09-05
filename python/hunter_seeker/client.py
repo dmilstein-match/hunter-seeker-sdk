@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
-DEFAULT_BASE = "https://hunter-seeker.net/api"
+DEFAULT_BASE = "https://hunter-seeker.io/api"
 
 
 @dataclass(frozen=True)

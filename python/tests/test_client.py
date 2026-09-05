@@ -10,7 +10,7 @@ class H(BaseHTTPRequestHandler):
             out = {"entity": {"entity_id": "a", "score": 0.9, "band": "act", "max_autonomy": "L3", "principal_reasons": []}, "verdict": {"expires_at": "2099-01-01T00:00:00Z"}, "signature": {"protected": "x", "signature": "y"}, "billable_decisions": 1}
             self.send_response(200)
         else:
-            out = {"type": "https://hunter-seeker.net/problems/model_ref_expired", "title": "expired", "status": 404, "detail": "gone", "hs": {"code": "model_ref_expired", "remedy": "re-run", "field": "model_ref"}}
+            out = {"type": "https://hunter-seeker.io/problems/model_ref_expired", "title": "expired", "status": 404, "detail": "gone", "hs": {"code": "model_ref_expired", "remedy": "re-run", "field": "model_ref"}}
             self.send_response(404)
         self.send_header("content-type", "application/json"); self.end_headers(); self.wfile.write(json.dumps(out).encode())
 
