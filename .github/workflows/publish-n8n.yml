@@ -37,7 +37,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22, matching ci.yml. NOT 20: n8n-workflow pulls in isolated-vm, a native module that
+          # fails to compile against Node 20's V8 headers (`SourceLocation` in namespace `v8` does
+          # not name a type), so `npm ci` dies before the publish step is even reached. The build
+          # workflow and the publish workflow must install on the same Node or one of them is a lie.
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
       - name: install and build
