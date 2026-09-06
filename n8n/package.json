@@ -3,6 +3,12 @@
   "version": "2.2.0",
   "description": "Hunter-Seeker Verdict layer for n8n: score, rank, verify, report outcome, drift.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dmilstein-match/hunter-seeker-sdk.git",
+    "directory": "n8n"
+  },
+  "homepage": "https://hunter-seeker.io",
   "keywords": [
     "n8n-community-node-package"
   ],
@@ -30,5 +36,8 @@
   ],
   "devDependencies": {
     "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
