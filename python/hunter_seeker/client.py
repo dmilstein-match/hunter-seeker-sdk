@@ -47,7 +47,7 @@ class Client:
         data = json.dumps(body or {}).encode() if method == "POST" else None
         req = urllib.request.Request(self.base + path, data=data, method=method, headers={
             "authorization": self._auth, "content-type": "application/json",
-            "user-agent": "hunter-seeker-python/2.1.0",
+            "user-agent": "hunter-seeker-python/2.1.1",
             **({"idempotency-key": idempotency_key} if idempotency_key else {}),
         })
         try:
