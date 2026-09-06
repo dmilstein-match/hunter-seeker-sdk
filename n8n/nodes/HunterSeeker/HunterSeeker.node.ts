@@ -37,6 +37,7 @@ const OPS = {
   describe: { path: "/v1/describe-capabilities", label: "Describe capabilities (free)", cost: "free" },
   // — supply —
   provide: { path: "/v1/provide-dataset", label: "Provide dataset (free)", cost: "free" },
+  append: { path: "/v1/append-rows", label: "Upload a table from a file (free)", cost: "free" },
   // — run —
   rank: { path: "/v1/rank-topk", label: "Rank a table (ONE RUN)", cost: "one run" },
   poll: { path: "/v1/poll-task", label: "Poll a task (free)", cost: "free" },
@@ -74,7 +75,15 @@ export class HunterSeeker implements INodeType {
       "Deterministic, signed, refusable decisions for your workflow. Agents may generate copy; they may not invent the score.",
     defaults: { name: "Hunter-Seeker" },
     inputs: ["main"],
-    outputs: ["main"],
+    // TWO outputs, because an honest-empty is a RESULT and not a failure.
+    //
+    // `{result: "none"}` is this product's best feature: below the bar it refuses rather than
+    // handing back a weak ranking. But it arrives as an ordinary HTTP 200, so on a single output it
+    // looks exactly like a finding and a workflow either treats it as one or, worse, someone wires
+    // a retry loop around it — retrying a deterministic refusal forever. A branch lets a builder
+    // route it: "no finding" is a path you design for, not an error you swallow.
+    outputs: ["main", "main"],
+    outputNames: ["Result", "No finding"],
     usableAsTool: true,
     credentials: [{ name: "hunterSeekerApi", required: true }],
     properties: [
@@ -105,7 +114,7 @@ export class HunterSeeker implements INodeType {
         default: "",
         ...show("quality", "drivers", "levers", "brief"),
         description:
-          "ranking_ref from a cleared Rank. The analysis behind it is cached for one HOUR, and every operation that takes it is free — run once, interrogate freely.",
+          "ranking_ref from a cleared Rank. The analysis behind it is cached for 24 HOURS, and every operation that takes it is free — run once, interrogate freely.",
       },
       {
         displayName: "Task ID",
@@ -114,6 +123,40 @@ export class HunterSeeker implements INodeType {
         default: "",
         ...show("poll"),
         description: "task_id from an async Rank. Respect retry_after_ms; do not tight-loop.",
+      },
+
+      // ── upload a table from a file ────────────────────────────────────────────────────────
+      //
+      // A BINARY property, not JSON items, and that is the whole design. If this node's input were
+      // 68,000 items, n8n would already have materialized every row in memory and the workflow
+      // would be fragile before we ran at all. Taking a CSV file from a previous node (Postgres →
+      // Convert to File, or Read/Write File) means one buffer and one pass, which is the difference
+      // between a workflow that handles a million rows and one that dies at fifty thousand.
+      {
+        displayName: "Input Binary Field",
+        name: "binaryProperty",
+        type: "string",
+        default: "data",
+        ...show("append"),
+        description:
+          "Name of the binary property holding the CSV (the default from Convert to File and Read/Write File is `data`). Feed this from a previous node rather than passing 68,000 JSON items — items are materialized in memory before this node runs, a file is not.",
+      },
+      {
+        displayName: "Rows Per Chunk",
+        name: "chunkRows",
+        type: "number",
+        default: 1500,
+        ...show("append"),
+        description:
+          "How many data rows to send per request. The upload travels this API connection, so it needs no other network access — it works from n8n Cloud, behind an egress proxy, and anywhere a presigned S3 URL is unreachable. Larger chunks are faster; ~1500 is a safe default.",
+      },
+      {
+        displayName: "Dataset Name",
+        name: "appendName",
+        type: "string",
+        default: "",
+        ...show("append"),
+        description: "Optional human-readable name for the dataset.",
       },
 
       // ── rank ──────────────────────────────────────────────────────────────────────────────
@@ -134,6 +177,15 @@ export class HunterSeeker implements INodeType {
       { displayName: "Dataset ID", name: "datasetId", type: "string", default: "sample:saas_churn", displayOptions: { show: { operation: ["rank"], dataSource: ["datasetId"] } } },
       { displayName: "Rows (JSON array)", name: "rows", type: "json", default: "[]", displayOptions: { show: { operation: ["rank"], dataSource: ["rows"] } } },
       { displayName: "Fetch URL", name: "fetchUrl", type: "string", default: "", displayOptions: { show: { operation: ["rank"], dataSource: ["fetchUrl"] } } },
+      {
+        displayName: "Fetch Headers (JSON)",
+        name: "fetchHeaders",
+        type: "json",
+        default: "{}",
+        displayOptions: { show: { operation: ["rank"], dataSource: ["fetchUrl"] } },
+        description:
+          'Headers sent WITH the fetch, e.g. { "Authorization": "Bearer …" }. Lets Hunter-Seeker read a private object or an internal export instead of you publishing the data at an open URL. The URL must still be public https and redirects are still refused — headers change authorization, not which hosts we will reach.',
+      },
       { displayName: "Entity Column", name: "entityColumn", type: "string", default: "", ...show("rank", "scoreBatch") },
       { displayName: "Outcome Column", name: "outcomeColumn", type: "string", default: "", ...show("rank") },
       {
@@ -250,7 +302,14 @@ export class HunterSeeker implements INodeType {
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
     const out: INodeExecutionData[] = [];
+    const empty: INodeExecutionData[] = [];
     const creds = (await this.getCredentials("hunterSeekerApi")) as { baseUrl: string };
+
+    /** One authenticated POST to the API. Every operation goes through here. */
+    const post = async (path: string, payload: Record<string, unknown>) =>
+      this.helpers.httpRequestWithAuthentication.call(this, "hunterSeekerApi", {
+        method: "POST", baseURL: creds.baseUrl, url: path, body: payload, json: true,
+      });
 
     for (let i = 0; i < items.length; i++) {
       const op = this.getNodeParameter("operation", i) as Op;
@@ -275,11 +334,61 @@ export class HunterSeeker implements INodeType {
           body = { ...opt("fetch_url", p("provideFetchUrl")), ...opt("name", p("datasetName")) };
           break;
 
+        // Upload a CSV file as chunks, then hand back the dataset_id to rank with.
+        //
+        // It loops HERE rather than making the user build a loop, for a reason the feedback found
+        // the hard way: a dataset_id is single-use with a 24h unrun expiry, so a workflow that
+        // registers in one node and uploads in another strands the id the moment anything between
+        // them fails. Registering and uploading in one operation means a retry simply starts a new
+        // upload — the node re-registers automatically, and there is no half-finished dataset to
+        // reason about.
+        case "append": {
+          const prop = p("binaryProperty") as string;
+          const size = Math.max(1, Number(p("chunkRows")) || 1500);
+          const buffer = await this.helpers.getBinaryDataBuffer(i, prop);
+          const text: string = buffer.toString("utf8").replace(/^\uFEFF/, "");
+          const lines: string[] = text.split(/\r?\n/).filter((l) => l.length > 0);
+          if (lines.length < 2) {
+            throw new Error(`binary property "${prop}" has a header but no data rows`);
+          }
+          const header = splitCsvLine(lines[0]!);
+          let datasetId = "";
+          let chunkIndex = 0;
+          let rowsSent = 0;
+          for (let start = 1; start < lines.length; start += size) {
+            const slice = lines.slice(start, start + size);
+            // Rebuilt as objects because /v1/append-rows takes rows, and the column ORDER must be
+            // the header's on every chunk — the API refuses a chunk whose keys differ, rather than
+            // reordering it, so building each row from `header` is what keeps every chunk aligned.
+            const rows = slice.map((line) => {
+              const cells = splitCsvLine(line);
+              const row: Record<string, string> = {};
+              header.forEach((h, c) => { row[h] = cells[c] ?? ""; });
+              return row;
+            });
+            const res = await post(OPS.append.path, {
+              ...(datasetId ? { dataset_id: datasetId } : {}),
+              rows,
+              chunk_index: chunkIndex,
+              ...(chunkIndex === 0 ? opt("name", p("appendName")) : {}),
+            });
+            datasetId = String((res as { dataset_id?: string }).dataset_id ?? datasetId);
+            if (!datasetId) throw new Error("the API returned no dataset_id for chunk 0");
+            rowsSent += rows.length;
+            chunkIndex += 1;
+          }
+          out.push({
+            json: { dataset_id: datasetId, chunks_sent: chunkIndex, rows_sent: rowsSent, columns: header },
+            pairedItem: { item: i },
+          });
+          continue;
+        }
+
         case "rank": {
           const source = p("dataSource") as "datasetId" | "rows" | "fetchUrl";
           const data =
             source === "rows" ? { rows: json("rows") }
-              : source === "fetchUrl" ? { fetch_url: p("fetchUrl") }
+              : source === "fetchUrl" ? { fetch_url: p("fetchUrl"), ...optObj("fetch_headers", json("fetchHeaders")) }
                 : { dataset_id: p("datasetId") };
           const desirable = p("outcomeIsDesirable") as "unstated" | "yes" | "no";
           body = {
@@ -378,15 +487,46 @@ export class HunterSeeker implements INodeType {
           break;
       }
 
-      const res = await this.helpers.httpRequestWithAuthentication.call(this, "hunterSeekerApi", {
-        method: "POST",
-        baseURL: creds.baseUrl,
-        url: OPS[op].path,
-        body,
-        json: true,
-      });
-      out.push({ json: res as any, pairedItem: { item: i } });
+      const res = await post(OPS[op].path, body);
+      // An honest-empty leaves by its own door. `result: "none"` is a terminal ANSWER — retrying the
+      // identical call returns the identical result — so it must not look like a transient failure.
+      const bucket = (res as { result?: string })?.result === "none" ? empty : out;
+      bucket.push({ json: res as any, pairedItem: { item: i } });
     }
-    return [out];
+    return [out, empty];
   }
+}
+
+/**
+ * Split ONE CSV line into its fields (RFC 4180: quoted fields may contain commas and escaped
+ * quotes).
+ *
+ * A plain `line.split(",")` corrupts any table with a comma inside a quoted cell — an address, a
+ * company name, a note — and it corrupts it SILENTLY, shifting every later column on that row
+ * only. That is the worst shape of data bug: the run succeeds and the answer is wrong.
+ *
+ * A field containing a literal newline is out of scope here, because the caller has already split
+ * on newlines; such a file should go through the presigned upload_url instead, which never parses.
+ */
+function splitCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (line[i + 1] === '"') { field += '"'; i += 1; continue; }
+        inQuotes = false;
+        continue;
+      }
+      field += c;
+      continue;
+    }
+    if (c === '"') { inQuotes = true; continue; }
+    if (c === ",") { out.push(field); field = ""; continue; }
+    field += c;
+  }
+  out.push(field);
+  return out;
 }
