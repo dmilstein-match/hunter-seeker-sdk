@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional, Sequence
 
 DEFAULT_BASE = "https://hunter-seeker.io/api"
 
@@ -70,6 +70,52 @@ class Client:
 
     def provide_dataset(self, *, fetch_url: Optional[str] = None, name: Optional[str] = None) -> Dict[str, Any]:
         return self._call("/v1/provide-dataset", {k: v for k, v in {"fetch_url": fetch_url, "name": name}.items() if v})
+
+    def append_rows(self, rows: Sequence[Mapping[str, Any]], *, dataset_id: Optional[str] = None,
+                    chunk_index: int = 0, name: Optional[str] = None) -> Dict[str, Any]:
+        """Send ONE chunk. Most callers want `upload_rows` below, which does the loop."""
+        body: Dict[str, Any] = {"rows": list(rows), "chunk_index": chunk_index}
+        if dataset_id: body["dataset_id"] = dataset_id
+        if name and chunk_index == 0: body["name"] = name
+        return self._call("/v1/append-rows", body)
+
+    def upload_rows(self, rows: Sequence[Mapping[str, Any]], *, chunk_size: int = 1500,
+                    name: Optional[str] = None) -> str:
+        """Send a large table one chunk at a time and return the dataset_id to rank with.
+
+        THE DOOR THAT ALWAYS WORKS. The other large-data paths need the open internet from YOUR
+        side — a presigned upload_url points at s3.amazonaws.com, and fetch_url means hosting a
+        public URL of your own — so behind an egress proxy, or in a sandbox, neither is reachable.
+        This travels the connection you are already using. It is slower than a single PUT, which is
+        the right trade: minutes rather than impossible. If you CAN reach S3, prefer
+        `provide_dataset()` and PUT the file.
+
+        Chunking cannot change the result. Every chunk is sent with the SAME column order as the
+        first (taken from the first row), and chunks are assembled in index order — row order is
+        load-bearing, because the engine splits train/gate/test by position. The assembled bytes are
+        the bytes a single upload would have produced.
+
+        Retries are safe: re-sending a chunk_index that already landed is a no-op, so a dropped
+        connection costs one chunk and not the upload.
+        """
+        rows = list(rows)
+        if not rows:
+            raise ValueError("upload_rows needs at least one row")
+        if chunk_size < 1:
+            raise ValueError("chunk_size must be >= 1")
+        # Column order is fixed HERE, once, from the first row. Passing each chunk's own dict order
+        # would let a differently-ordered dict get the chunk refused mid-upload.
+        columns = list(rows[0].keys())
+        dataset_id: Optional[str] = None
+        for index, start in enumerate(range(0, len(rows), chunk_size)):
+            chunk = [{c: r.get(c) for c in columns} for r in rows[start:start + chunk_size]]
+            out = self.append_rows(chunk, dataset_id=dataset_id, chunk_index=index, name=name)
+            dataset_id = out.get("dataset_id") or dataset_id
+            if not dataset_id:
+                raise HunterSeekerError(ProblemDetails(502, "no_dataset_id",
+                                                       "the server returned no dataset_id for chunk 0",
+                                                       "retry the upload", None, None))
+        return dataset_id  # type: ignore[return-value]
 
     def rank_topk(self, *, entity_column: str, outcome_column: str, subject_kind: str,
                   dataset_id: Optional[str] = None, rows: Optional[list] = None, csv: Optional[str] = None,
