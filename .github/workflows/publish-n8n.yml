@@ -1,0 +1,59 @@
+# Publish the n8n community node to npm WITH PROVENANCE.
+#
+# WHY THIS EXISTS. Since 2026-05-01 n8n requires community nodes to be published via a GitHub
+# Action carrying a provenance statement (see n8n/README.md). Provenance is a signed attestation
+# that these bytes were built from this commit in this repository, and it can ONLY be produced by
+# a CI runner with an OIDC identity — `npm publish --provenance` from a laptop cannot generate one.
+# Every release before this workflow (2.0.0, 2.2.0) was published by hand and therefore carries no
+# attestation: `npm view n8n-nodes-hunter-seeker@2.0.0` shows `dist.attestations` null.
+#
+# THREE THINGS MUST ALL HOLD or the publish fails, and each fails differently:
+#   * `id-token: write` — without it there is no OIDC token and provenance cannot be signed.
+#   * the repository is PUBLIC — npm refuses provenance for a private source.
+#   * n8n/package.json declares `repository` matching THIS repo — npm compares them and rejects a
+#     mismatch rather than attesting something it cannot corroborate.
+#
+# Manual dispatch on purpose. Publishing on every push to main would republish unchanged bytes and
+# fail on a version that already exists; a release is a decision, so it takes a click.
+name: publish n8n node
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack and test only — do not publish'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write          # required for provenance; without it the publish is unsigned
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: install and build
+        run: cd n8n && npm ci && npm run build
+
+      # The same suite CI runs. A node that posts to the right URL with the wrong body is a 422
+      # the user reads as "Hunter-Seeker is broken", so this gate is not ceremony.
+      - name: test
+        run: cd n8n && npm test
+
+      - name: pack (dry run)
+        if: ${{ inputs.dry_run }}
+        run: cd n8n && npm pack --dry-run
+
+      - name: publish with provenance
+        if: ${{ !inputs.dry_run }}
+        run: cd n8n && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
