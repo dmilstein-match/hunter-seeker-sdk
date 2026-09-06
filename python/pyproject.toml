@@ -1,6 +1,6 @@
 [project]
 name = "hunter-seeker"
-version = "2.0.0"
+version = "2.1.0"
 description = "Python client and framework tools for the Hunter-Seeker Verdict layer: deterministic, signed, refusable decisions for agents."
 requires-python = ">=3.10"
 dependencies = ["hs-verify>=0.1"]
