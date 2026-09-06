@@ -1317,6 +1317,13 @@
             "maxLength": 120,
             "description": "Human-readable dataset name."
           },
+          "fetch_headers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused. Note MCP clients cannot set this — it is for REST/SDK callers."
+          },
           "direct_upload": {
             "type": "boolean",
             "description": "Direct-to-storage upload is now the DEFAULT (no size or row cap), so you rarely need this. Set false to instead receive a proxied upload_url, which normalizes a JSON body to CSV but is capped at the ~4.5MB serverless body limit. Ignored when fetch_url is present."
@@ -1365,6 +1372,98 @@
         ],
         "additionalProperties": true
       },
+      "hs_append_rows_input": {
+        "type": "object",
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The dataset to append to, from a previous hs_append_rows call. OMIT on your first call and one is opened for you and returned."
+          },
+          "csv": {
+            "type": "string",
+            "minLength": 1,
+            "description": "This chunk as CSV text, as an alternative to rows. INCLUDE THE HEADER ROW ON EVERY CHUNK — it is what proves the chunk lines up with chunk 0, and it is stripped before the data is stored. Prefer this when you already hold CSV: it is roughly a third the size of the same rows as JSON, which matters when the whole point is moving a large table through a request body."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "minItems": 1,
+            "description": "This chunk's rows, as JSON objects. Aim for ~1500 rows a chunk. EVERY chunk must carry the same keys, in the same order, as chunk 0 — a mismatch is refused rather than reordered, because reordering would silently change what each column position means."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0 for the first chunk, then 1, 2, 3 … Chunks are assembled in THIS order, and row order matters to the analysis, so send them in the order your table is in. Re-sending an index that already landed is a no-op success — that is how you resume after a dropped connection."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Human-readable dataset name. Only read when a dataset is opened (chunk 0 with no dataset_id)."
+          }
+        },
+        "required": [
+          "chunk_index"
+        ],
+        "additionalProperties": false
+      },
+      "hs_append_rows_output": {
+        "type": "object",
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "The dataset these chunks are landing in — pass it on every later chunk, then to hs_rank_topk as data.dataset_id."
+          },
+          "chunk_index": {
+            "type": "number",
+            "description": "The index this call handled."
+          },
+          "deduped": {
+            "type": "boolean",
+            "description": "True when this chunk_index had already landed and nothing was appended — a retry, not a duplicate."
+          },
+          "chunks_received": {
+            "type": "number",
+            "description": "How many distinct chunks have landed so far."
+          },
+          "rows_received": {
+            "type": "number",
+            "description": "Total data rows across every chunk that has landed."
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The column list locked by chunk 0. Every later chunk must match it exactly, in this order."
+          },
+          "next": {},
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "provenance"
+        ],
+        "additionalProperties": true
+      },
       "hs_rank_topk_input": {
         "type": "object",
         "properties": {
@@ -1386,6 +1485,13 @@
               "fetch_url": {
                 "type": "string",
                 "description": "Public https URL the SERVER fetches, parses, and ranks in ONE async call (collapses hs_provide_dataset + hs_rank_topk). Returns { status:\"pending\", task_id } — poll hs_poll_task. Internal/private/non-https URLs are refused."
+              },
+              "fetch_headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused. Note MCP clients cannot set this — it is for REST/SDK callers."
               },
               "dataset_id": {
                 "type": "string",
@@ -1449,7 +1555,7 @@
           "partitions": {
             "type": "number",
             "const": 2,
-            "description": "Split the table BY ENTITY into two disjoint draws plus a reserved batch, rank each, and return clearance_frequency, the conditions that recur across both, and confidence_tier \"borderline\" when exactly one clears. Near the bar a single verdict is a coin flip — measured: two entity-disjoint halves both came back empty while the pooled corpus cleared at 1.89. Billed as ONE run. Requires entity_column, and ~2,000 rows in practice: each draw must independently clear the holdout gate, so on small tables both draws come back unjudgeable rather than wrong."
+            "description": "Split the table BY ENTITY into two disjoint draws plus a reserved batch, rank each, and return clearance_frequency, the conditions that recur across both, and confidence_tier \"borderline\" when exactly one clears. Near the bar a single verdict is a coin flip — measured: two entity-disjoint halves both came back empty while the pooled corpus cleared at 1.89. Billed as ONE run. Requires entity_column, and about 1,250 rows MINIMUM — send more if you can. Here is the arithmetic, so you can judge your own table before spending the run rather than after: the split gives each draw ~40% of the rows (it is by hash of the entity id, so 40% is the expectation, not a guarantee), and the engine can only hold rows back to test itself when 20% of a draw is at least 100 rows — i.e. ~500 rows per draw. Below that BOTH draws come back `no_holdout`: you get clearance_frequency.judgeable 0, no model_ref and no verdict, which is an unanswered question rather than a negative answer. At 800 rows this happens every time."
           },
           "refit_of": {
             "type": "string",
@@ -1527,7 +1633,7 @@
         "properties": {
           "ranking_ref": {
             "type": "string",
-            "description": "Reuse this for the free drill-in tools for one hour."
+            "description": "Reuse this for the free drill-in tools for 24 hours."
           },
           "model_ref": {
             "type": [
@@ -2134,7 +2240,7 @@
         "properties": {
           "ranking_ref": {
             "type": "string",
-            "description": "Reuse this for the free drill-in tools for one hour."
+            "description": "Reuse this for the free drill-in tools for 24 hours."
           },
           "model_ref": {
             "type": [

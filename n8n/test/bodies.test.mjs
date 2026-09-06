@@ -170,3 +170,150 @@ test("describe takes no arguments at all", async () => {
   const req = await run({ operation: "describe" });
   assert.deepEqual(req.body, {});
 });
+
+/** A context that can also serve a BINARY property and return scripted responses. */
+function ctxRich(params, { binary = null, responses = null, items = [{ json: {} }] } = {}) {
+  const sent = [];
+  let n = 0;
+  const self = {
+    getInputData: () => items,
+    getExecutionId: () => "exec-1",
+    getCredentials: async () => ({ baseUrl: "https://hunter-seeker.io/api" }),
+    getNodeParameter: (name, _i, fallback) => (name in params ? params[name] : fallback),
+    helpers: {
+      async getBinaryDataBuffer() { return Buffer.from(binary ?? "", "utf8"); },
+      httpRequestWithAuthentication: {
+        async call(_self, _cred, req) {
+          sent.push(req);
+          const r = responses ? responses[Math.min(n, responses.length - 1)] : { ok: true };
+          n += 1;
+          return r;
+        },
+      },
+    },
+  };
+  return { self, sent };
+}
+
+// -- upload a table from a file --------------------------------------------------------------
+
+test("append splits a CSV file into chunks and reuses the dataset_id chunk 0 returns", async () => {
+  // The shape that matters: chunk 0 carries NO dataset_id (the API opens one), and every later
+  // chunk carries the one it returned. Guessing an id, or re-opening per chunk, would scatter one
+  // table across several datasets.
+  const rows = Array.from({ length: 5 }, (_, i) => `c${i},${i},no`).join("\n");
+  const { self, sent } = ctxRich(
+    { operation: "append", binaryProperty: "data", chunkRows: 2, appendName: "big" },
+    { binary: `customer_id,logins,churned\n${rows}`, responses: [{ dataset_id: "ds_9" }] },
+  );
+  const [out] = await new HunterSeeker().execute.call(self);
+
+  assert.equal(sent.length, 3, "5 rows at 2 per chunk is 3 chunks");
+  assert.equal(sent[0].url, "/v1/append-rows");
+  assert.equal(sent[0].body.dataset_id, undefined, "chunk 0 must not name a dataset");
+  assert.equal(sent[0].body.chunk_index, 0);
+  assert.equal(sent[0].body.name, "big");
+  for (const [k, req] of [[1, sent[1]], [2, sent[2]]]) {
+    assert.equal(req.body.dataset_id, "ds_9", `chunk ${k} lost the dataset_id`);
+    assert.equal(req.body.chunk_index, k);
+    assert.equal(req.body.name, undefined, "the name belongs to chunk 0 only");
+  }
+  assert.deepEqual(out[0].json, {
+    dataset_id: "ds_9", chunks_sent: 3, rows_sent: 5,
+    columns: ["customer_id", "logins", "churned"],
+  });
+});
+
+test("append builds every row against the HEADER, so column order is identical in every chunk", async () => {
+  // The API refuses a chunk whose keys differ from chunk 0 rather than reordering it, so building
+  // each row from the header is what keeps a multi-chunk upload from being rejected mid-way.
+  const { self, sent } = ctxRich(
+    { operation: "append", binaryProperty: "data", chunkRows: 1 },
+    { binary: "a,b,c\n1,2,3\n4,5,6", responses: [{ dataset_id: "ds_1" }] },
+  );
+  await new HunterSeeker().execute.call(self);
+  assert.deepEqual(Object.keys(sent[0].body.rows[0]), ["a", "b", "c"]);
+  assert.deepEqual(Object.keys(sent[1].body.rows[0]), ["a", "b", "c"]);
+  assert.deepEqual(sent[1].body.rows[0], { a: "4", b: "5", c: "6" });
+});
+
+test("a comma inside a quoted cell does not shift the columns", async () => {
+  // A plain split(",") corrupts this row and ONLY this row, silently: the run succeeds and the
+  // answer is wrong, which is the worst available failure.
+  const { self, sent } = ctxRich(
+    { operation: "append", binaryProperty: "data", chunkRows: 10 },
+    { binary: 'id,note,churned\n1,"Acme, Inc",no', responses: [{ dataset_id: "ds_1" }] },
+  );
+  await new HunterSeeker().execute.call(self);
+  assert.deepEqual(sent[0].body.rows[0], { id: "1", note: "Acme, Inc", churned: "no" });
+});
+
+test("an escaped quote survives, and a BOM does not become part of the first column name", async () => {
+  const { self, sent } = ctxRich(
+    { operation: "append", binaryProperty: "data", chunkRows: 10 },
+    { binary: '\uFEFFid,note\n1,"she said ""hi"""', responses: [{ dataset_id: "ds_1" }] },
+  );
+  await new HunterSeeker().execute.call(self);
+  assert.deepEqual(sent[0].body.rows[0], { id: "1", note: 'she said "hi"' });
+});
+
+test("a file with a header and no data rows fails loudly", async () => {
+  const { self } = ctxRich(
+    { operation: "append", binaryProperty: "data", chunkRows: 10 },
+    { binary: "id,note", responses: [{ dataset_id: "ds_1" }] },
+  );
+  await assert.rejects(() => new HunterSeeker().execute.call(self), /no data rows/);
+});
+
+// -- honest-empty leaves by its own door -------------------------------------------------------
+
+const RANK_INLINE = {
+  operation: "rank", dataSource: "rows", rows: "[]",
+  entityColumn: "id", outcomeColumn: "churned", subjectKind: "org", topK: 20,
+};
+
+test("an honest-empty goes to the SECOND output, not the first", async () => {
+  // {result: "none"} arrives as an ordinary 200. On one output it is indistinguishable from a
+  // finding, and someone wraps a retry loop around a deterministic refusal.
+  const { self } = ctxRich(RANK_INLINE, { responses: [{ result: "none", reasons: ["below the bar"] }] });
+  const [result, empty] = await new HunterSeeker().execute.call(self);
+  assert.equal(result.length, 0, "an honest-empty must not look like a finding");
+  assert.equal(empty.length, 1);
+  assert.equal(empty[0].json.result, "none");
+});
+
+test("a real ranking goes to the FIRST output", async () => {
+  const { self } = ctxRich(RANK_INLINE, {
+    responses: [{ entities: [{ entity_id: "a", score: 0.9 }], ranking_ref: "r1" }],
+  });
+  const [result, empty] = await new HunterSeeker().execute.call(self);
+  assert.equal(result.length, 1);
+  assert.equal(empty.length, 0);
+});
+
+test("a pending task is a RESULT, not a non-finding", async () => {
+  const { self } = ctxRich(
+    { operation: "rank", dataSource: "datasetId", datasetId: "ds_1", entityColumn: "id", outcomeColumn: "churned", subjectKind: "org", topK: 20 },
+    { responses: [{ status: "pending", task_id: "t1" }] },
+  );
+  const [result, empty] = await new HunterSeeker().execute.call(self);
+  assert.equal(result.length, 1);
+  assert.equal(empty.length, 0);
+});
+
+// -- fetch headers ------------------------------------------------------------------------------
+
+test("fetch_headers ride along with a fetch_url, and an empty object is omitted", async () => {
+  const withHeaders = await run({
+    operation: "rank", dataSource: "fetchUrl", fetchUrl: "https://x/y.csv",
+    fetchHeaders: '{"Authorization":"Bearer t"}',
+    entityColumn: "id", outcomeColumn: "churned", subjectKind: "org", topK: 20,
+  });
+  assert.deepEqual(withHeaders.body.data.fetch_headers, { Authorization: "Bearer t" });
+
+  const without = await run({
+    operation: "rank", dataSource: "fetchUrl", fetchUrl: "https://x/y.csv", fetchHeaders: "{}",
+    entityColumn: "id", outcomeColumn: "churned", subjectKind: "org", topK: 20,
+  });
+  assert.equal("fetch_headers" in without.body.data, false, "an empty object is not a value");
+});
