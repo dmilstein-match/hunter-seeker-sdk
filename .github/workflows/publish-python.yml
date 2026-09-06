@@ -1,0 +1,59 @@
+# Publish the Python client to PyPI via TRUSTED PUBLISHING — no stored credential.
+#
+# WHY NOT A TOKEN. A PyPI API token in a repo secret is a long-lived bearer credential: anyone who
+# can run a workflow, or read the secret through a compromised action, can publish as you, and
+# rotating it means touching every repo that holds a copy. Trusted Publishing swaps that for a
+# short-lived OIDC token minted per run and scoped to THIS repository and THIS workflow file. There
+# is nothing to leak and nothing to rotate. It also produces PEP 740 attestations automatically, so
+# a consumer can verify a release was built here rather than pasted up from a laptop — which is
+# what 2.0.0 and 2.1.0 both were.
+#
+# ONE-TIME SETUP, on PyPI (there is no CLI for it):
+#   pypi.org → your project → Manage → Publishing → Add a new pending/trusted publisher
+#     Owner: dmilstein-match   Repository: hunter-seeker-sdk
+#     Workflow name: publish-python.yml     Environment: (leave blank)
+# Until that exists this workflow fails at the upload step with an explicit
+# "trusted publisher" error — it does not fall back to a token, deliberately.
+#
+# Manual dispatch: a release is a decision, and PyPI refuses a duplicate version, so a
+# push-triggered publish would fail on every push that did not happen to bump the version.
+name: publish python client
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and check only — do not upload'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write          # mints the OIDC token Trusted Publishing exchanges; without it, no auth
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: test
+        run: cd python && python -m pip install --quiet pytest && python -m pytest tests -q
+
+      - name: build
+        run: cd python && python -m pip install --quiet build && python -m build
+
+      # Catches a malformed README or bad metadata BEFORE upload. PyPI renders the readme itself and
+      # rejects one it cannot parse, and a rejected upload still burns the version number.
+      - name: check the artifacts
+        run: cd python && python -m pip install --quiet twine && python -m twine check dist/*
+
+      - name: publish to PyPI
+        if: ${{ !inputs.dry_run }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: python/dist
