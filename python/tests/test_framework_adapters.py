@@ -69,7 +69,10 @@ def fake_langchain(monkeypatch):
 
 @pytest.fixture
 def fake_crewai(monkeypatch):
-    from pydantic import BaseModel
+    # crewai brings pydantic; without it there is nothing to build a BaseTool from. Skip rather
+    # than error so a bare env degrades cleanly — but CI installs pydantic, because a test that
+    # only ever skips is the same as no test, which is what this file exists to correct.
+    BaseModel = pytest.importorskip("pydantic", reason="pydantic is required for the crewai adapter").BaseModel
 
     class BaseTool(BaseModel):
         model_config = {"arbitrary_types_allowed": True}
