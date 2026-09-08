@@ -5,8 +5,9 @@ not invented — including the fact that ONE cleared top-k contained both `act`/
 rows, which is the case a caller who trusts "the top k are the ones to act on" gets wrong.
 """
 import pytest
-from hunter_seeker import (Autonomy, Band, MissingSafeguard, attestable, band, ceiling,
-                           lever_helps, polarity_of, should_act)
+from hunter_seeker import (ACTIONABLE, REFUSED, UNJUDGED, Autonomy, Band, MissingSafeguard,
+                           attestable, band, ceiling, lever_helps, polarity_of,
+                           run_is_actionable, should_act, usability_of)
 
 # sample:saas_churn — rank 1 and rank 58 of ONE ranking (lift 4.44)
 ACT_ROW = {"entity_id": "cust_0563", "score": 0.7759820514189896, "tier": "high",
@@ -82,3 +83,91 @@ def test_a_lever_without_a_token_cannot_be_attested():
     assert attestable(LEVER_LOWER) is False
     assert attestable({**LEVER_LOWER, "lever_token": "ct1.abc.def"}) is True
     assert attestable({**LEVER_LOWER, "lever_token": ""}) is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Unit 102 / B11 — the SDK refuses the RUN, not just the row.
+#
+# Measured on the live surface 2026-09-08: sample:saas_churn with partitions:2 below the row floor
+# returned gate_verdicts ["cleared: ..."] beside clearance_frequency {cleared:0, of:2, judgeable:0},
+# a null model_ref and a null verdict. An agent that read the first acted on a run the engine had
+# never been able to judge.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+UNJUDGED_RUN = {
+    "usability": "unjudged",
+    "model_ref": None,
+    "verdict": None,
+    "partitions": {"clearance_frequency": {"cleared": 0, "of": 2, "judgeable": 0}},
+}
+ACTIONABLE_RUN = {"usability": "actionable", "model_ref": "mr1_x", "verdict": {"kind": "ranking"}}
+REFUSED_RUN = {"result": "none", "usability": "refused"}
+BANDED_ENTITY = {"entity_id": "e", "score": 0.9, "band": "act", "max_autonomy": "L3"}
+
+
+def test_usability_is_read_not_re_derived():
+    assert usability_of(ACTIONABLE_RUN) == ACTIONABLE
+    assert usability_of(UNJUDGED_RUN) == UNJUDGED
+    assert usability_of(REFUSED_RUN) == REFUSED
+    assert run_is_actionable(ACTIONABLE_RUN) is True
+    assert run_is_actionable(UNJUDGED_RUN) is False
+
+
+def test_an_envelope_from_before_the_field_shipped_degrades_to_unjudged():
+    # B12. Never to actionable — a missing stop signal must not become permission. This is the one
+    # rule that makes it safe to ship the field without a client-version handshake.
+    legacy = {k: v for k, v in ACTIONABLE_RUN.items() if k != "usability"}
+    assert usability_of(legacy) == UNJUDGED
+    assert usability_of({}) == UNJUDGED
+    assert usability_of({"usability": "probably_fine"}) == UNJUDGED
+    assert usability_of(None) == UNJUDGED
+    with pytest.raises(MissingSafeguard):
+        should_act(BANDED_ENTITY, run=legacy)
+
+
+def test_should_act_refuses_the_whole_run_and_names_the_evidence():
+    # It RAISES rather than returning False: "there is no answer here" is a different outcome from
+    # "the answer is no", and an integrator that cannot tell them apart retries the first.
+    with pytest.raises(MissingSafeguard) as e:
+        should_act(BANDED_ENTITY, run=UNJUDGED_RUN)
+    msg = str(e.value)
+    assert "usability: 'unjudged'" in msg
+    assert "judgeable: 0 of 2" in msg, "the refusal must quote the engine's own counts"
+    assert "unanswered question, not a negative answer" in msg
+    # A refused run refuses too, and says something different — it IS an answer.
+    with pytest.raises(MissingSafeguard) as e2:
+        should_act(BANDED_ENTITY, run=REFUSED_RUN)
+    assert "the bar was applied and nothing cleared" in str(e2.value)
+
+
+def test_the_run_check_fires_BEFORE_the_row_check():
+    # Load-bearing ordering. On the measured run the entities carried no band at all, so the
+    # per-entity check happened to refuse — for the wrong reason, and it would pass the moment the
+    # engine started banding an unjudged run's rows. Prove the run gate is what refuses here.
+    with pytest.raises(MissingSafeguard) as e:
+        should_act(BANDED_ENTITY, run=UNJUDGED_RUN)
+    assert "this RUN is not actionable" in str(e.value)
+    assert "no 'band'" not in str(e.value)
+
+
+def test_the_brief_shape_is_accepted_too():
+    # hs_context_brief nests the same counts under `trust` rather than `partitions`. One helper,
+    # both shapes — an agent should not have to normalise a surface before it can be safe.
+    brief = {
+        "usability": "unjudged",
+        "trust": {"clearance_frequency": {"cleared": 0, "of": 2, "judgeable": 0}},
+    }
+    with pytest.raises(MissingSafeguard) as e:
+        should_act(BANDED_ENTITY, run=brief)
+    assert "judgeable: 0 of 2" in str(e.value)
+
+
+def test_existing_per_entity_behaviour_is_unchanged_when_run_is_omitted():
+    # B11's "existing per-entity behaviour unchanged". Omitting `run` reproduces the old contract
+    # exactly, so no caller written before this breaks.
+    assert should_act(BANDED_ENTITY) is True
+    assert should_act(BANDED_ENTITY, run=ACTIONABLE_RUN) is True
+    assert should_act({**BANDED_ENTITY, "band": "escalate"}, run=ACTIONABLE_RUN) is False
+    assert should_act({**BANDED_ENTITY, "max_autonomy": "L2"}, run=ACTIONABLE_RUN) is False
+    with pytest.raises(MissingSafeguard):
+        should_act({"entity_id": "e", "score": 0.9}, run=ACTIONABLE_RUN)

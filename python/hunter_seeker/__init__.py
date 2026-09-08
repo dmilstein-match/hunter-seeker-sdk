@@ -21,12 +21,14 @@ Acting on a result safely (band / autonomy ladder / lever direction):
 Framework adapters: hunter_seeker.langchain, hunter_seeker.crewai. CLI: `hs`.
 """
 from .client import Client, HunterSeekerError, ProblemDetails
-from .safeguards import (Autonomy, Band, MissingSafeguard, attestable, band, ceiling,
-                         lever_helps, polarity_of, should_act)
+from .safeguards import (ACTIONABLE, REFUSED, UNJUDGED, Autonomy, Band, MissingSafeguard,
+                         attestable, band, ceiling, lever_helps, polarity_of, run_is_actionable,
+                         should_act, usability_of)
 
 __all__ = ["Client", "HunterSeekerError", "ProblemDetails",
            "Band", "Autonomy", "MissingSafeguard",
-           "should_act", "ceiling", "band", "lever_helps", "polarity_of", "attestable"]
+           "should_act", "ceiling", "band", "lever_helps", "polarity_of", "attestable",
+           "usability_of", "run_is_actionable", "ACTIONABLE", "UNJUDGED", "REFUSED"]
 # Kept in step with pyproject.toml by the versions-agree CI job. This read 2.0.0 through four
 # releases while pyproject.toml and the User-Agent string both said 2.1.1.
 __version__ = "2.1.2"
