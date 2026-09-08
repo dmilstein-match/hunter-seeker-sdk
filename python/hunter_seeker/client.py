@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 DEFAULT_BASE = "https://hunter-seeker.io/api"
 
@@ -47,7 +47,7 @@ class Client:
         data = json.dumps(body or {}).encode() if method == "POST" else None
         req = urllib.request.Request(self.base + path, data=data, method=method, headers={
             "authorization": self._auth, "content-type": "application/json",
-            "user-agent": "hunter-seeker-python/2.1.1",
+            "user-agent": "hunter-seeker-python/2.1.2",
             **({"idempotency-key": idempotency_key} if idempotency_key else {}),
         })
         try:
@@ -117,25 +117,78 @@ class Client:
                                                        "retry the upload", None, None))
         return dataset_id  # type: ignore[return-value]
 
+    #: The engine's own published run ceiling — hs_describe_capabilities reports
+    #: limits.completion.run_timeout_seconds = 3600. A run cannot outlive it, so a client that waits
+    #: longer than this is not being patient, it is hung.
+    RUN_TIMEOUT_S = 3600.0
+
     def rank_topk(self, *, entity_column: str, outcome_column: str, subject_kind: str,
                   dataset_id: Optional[str] = None, rows: Optional[list] = None, csv: Optional[str] = None,
-                  fetch_url: Optional[str] = None, k: int = 20, horizon: Optional[str] = None,
+                  fetch_url: Optional[str] = None, k: int = 20, offset: int = 0,
+                  outcome_is_desirable: Optional[bool] = None,
+                  horizon: Optional[str] = None,
                   acknowledge_decision_support: bool = False, reading: Optional[Mapping[str, Any]] = None,
                   refit_of: Optional[str] = None, idempotency_key: Optional[str] = None,
-                  wait: bool = True, poll_s: float = 2.0) -> Dict[str, Any]:
-        data = {k_: v for k_, v in {"dataset_id": dataset_id, "rows": rows, "csv": csv, "fetch_url": fetch_url}.items() if v}
+                  wait: bool = True, poll_s: float = 2.0,
+                  timeout_s: Optional[float] = None,
+                  on_progress: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, Any]:
+        """Rank a table. The only call that costs a run.
+
+        `outcome_is_desirable` — TRUE for an outcome you WANT (converted, renewed, paid_in_full),
+        FALSE for one you want to avoid (churned, defaulted, failed). Forwarded ONLY when you state
+        it: passing a default here would author a polarity you never gave, and polarity is what
+        decides which way every lever reads. Left unstated, the engine resolves it from the outcome
+        column NAME, which it says plainly is unreliable for arbitrary names.
+
+        `timeout_s` bounds the whole wait, not one HTTP request (that is `Client.timeout`). Defaults
+        to the engine's own 3,600s run ceiling: past that the run cannot still be alive, so waiting
+        longer only hangs an unattended agent.
+
+        `on_progress` is called with each pending envelope, which is the only way to see `stage`
+        and `facts_so_far` — a million-row run is a ~40-minute job, and without this it is
+        indistinguishable from a hung process. Those facts are leak-firewalled PROGRESS, never a
+        partial ranking: report them, never quote them as a result.
+        """
+        # Membership, not truthiness. `csv=""` and `rows=[]` are caller mistakes worth a clear local
+        # error; silently dropping them sent an empty `data` and produced a confusing server 422.
+        data = {k_: v for k_, v in {"dataset_id": dataset_id, "rows": rows, "csv": csv,
+                                    "fetch_url": fetch_url}.items() if v is not None}
+        if not data:
+            raise ValueError("pass exactly one of dataset_id / rows / csv / fetch_url")
+        empty = [k_ for k_, v in data.items() if not v]
+        if empty:
+            raise ValueError(f"{empty[0]} is empty - there is nothing to rank. "
+                             f"The old truthiness filter dropped it from the request instead, "
+                             f"which sent an empty `data` and produced a confusing server 422.")
         body: Dict[str, Any] = {"data": data, "entity_column": entity_column, "outcome_column": outcome_column,
-                                "subject_kind": subject_kind, "page": {"k": k},
+                                "subject_kind": subject_kind,
+                                "page": {"k": k, **({"offset": offset} if offset else {})},
                                 "acknowledge_decision_support": acknowledge_decision_support}
+        # Forwarded ONLY when stated — see the docstring. The n8n node has the same three-state rule.
+        if outcome_is_desirable is not None: body["outcome_is_desirable"] = bool(outcome_is_desirable)
         if horizon: body["horizon"] = horizon
         if reading: body["reading"] = dict(reading)
         if refit_of: body["refit_of"] = refit_of
         key = idempotency_key or str(uuid.uuid4())
         body["idempotency_key"] = key
         out = self._call("/v1/rank-topk", body, idempotency_key=key)
+        deadline = time.monotonic() + (self.RUN_TIMEOUT_S if timeout_s is None else timeout_s)
         while wait and out.get("status") == "pending":
+            if on_progress is not None:
+                on_progress(out)          # `stage` + `facts_so_far` live here and nowhere else
+            task_id = out.get("task_id")
+            if not task_id:
+                raise HunterSeekerError(ProblemDetails(502, "no_task_id",
+                                                       "a pending response carried no task_id",
+                                                       "retry the submit", None, None))
+            if time.monotonic() >= deadline:
+                raise HunterSeekerError(ProblemDetails(
+                    504, "poll_timeout",
+                    f"still pending after {(self.RUN_TIMEOUT_S if timeout_s is None else timeout_s):.0f}s",
+                    f"the run may still finish - poll_task({task_id!r}) to check, and do not re-submit "
+                    f"(that would cost a second run)", None, None))
             time.sleep(max(poll_s, out.get("retry_after_ms", 0) / 1000))
-            out = self.poll_task(out["task_id"])
+            out = self.poll_task(task_id)
         return out
 
     def poll_task(self, task_id: str) -> Dict[str, Any]:

@@ -42,7 +42,10 @@ jobs:
           python-version: '3.12'
 
       - name: test
-        run: cd python && python -m pip install --quiet pytest && python -m pytest tests -q
+        # pydantic is what the crewai adapter builds its tool models from — without it the adapter
+        # parity tests skip, and a release must not be cut on a suite that skipped the tests that
+        # prove every surface still reaches every operation.
+        run: cd python && python -m pip install --quiet pytest pydantic && python -m pytest tests -q
 
       - name: build
         run: cd python && python -m pip install --quiet build && python -m build
