@@ -8,9 +8,25 @@
     v    = hs.score_entity(run["model_ref"], {"tenure": 14, "seats": 3}, subject_kind="org")
     hs.verify(v["verdict"], v["signature"])          # -> "valid"
 
+Acting on a result safely (band / autonomy ladder / lever direction):
+
+    from hunter_seeker import should_act, lever_helps
+    top = run["entities"][0]
+    if should_act(top):                     # band is act AND the ceiling allows L3
+        ...
+    # lever_helps needs the Verdict: which direction is GOOD depends on the outcome polarity,
+    # and it raises rather than guessing when it cannot see one.
+    lever_helps(levers[0], run["verdict"])
+
 Framework adapters: hunter_seeker.langchain, hunter_seeker.crewai. CLI: `hs`.
 """
 from .client import Client, HunterSeekerError, ProblemDetails
+from .safeguards import (Autonomy, Band, MissingSafeguard, attestable, band, ceiling,
+                         lever_helps, polarity_of, should_act)
 
-__all__ = ["Client", "HunterSeekerError", "ProblemDetails"]
-__version__ = "2.0.0"
+__all__ = ["Client", "HunterSeekerError", "ProblemDetails",
+           "Band", "Autonomy", "MissingSafeguard",
+           "should_act", "ceiling", "band", "lever_helps", "polarity_of", "attestable"]
+# Kept in step with pyproject.toml by the versions-agree CI job. This read 2.0.0 through four
+# releases while pyproject.toml and the User-Agent string both said 2.1.1.
+__version__ = "2.1.2"

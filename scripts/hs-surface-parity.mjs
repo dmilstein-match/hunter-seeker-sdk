@@ -26,7 +26,12 @@ const KEY = process.env.HS_KEY;
 
 const args = process.argv.slice(2);
 const strictNode = args.includes("--strict-node");
+const strictPython = args.includes("--strict-python");
 const nodePath = args.find((a) => !a.startsWith("--"));
+// Leg 4 reads the adapter SOURCE rather than importing it, exactly as the node leg does — no
+// Python runtime, no langchain/crewai install, and it still cannot be fooled by a tool that is
+// declared and never returned, because it reads the returned list.
+const pythonDir = process.env.HS_PYTHON_DIR ?? "python/hunter_seeker";
 
 const strip = (n) => String(n).replace(/^hs_/, "");
 const kebab = (id) => id.replace(/_/g, "-");
@@ -130,6 +135,32 @@ function nodeOps(path) {
   return new Set(found);
 }
 
+/* ------------------------------------------ leg 4: the Python framework adapters --- */
+
+// Both adapters shipped a FRACTION of the surface with zero tests: langchain returned 5 of 16 and
+// crewai 1, and neither included rank_topk — so an agent built from either could never obtain the
+// model_ref its own score_entity tool requires. That is the same gap this script already fails the
+// n8n node for; it simply had no leg that could see Python.
+function pythonOps(dir) {
+  const out = new Set();
+  for (const file of ["langchain.py", "crewai.py"]) {
+    let src;
+    try {
+      src = readFileSync(`${dir}/${file}`, "utf8");
+    } catch {
+      continue;
+    }
+    // Only names in the RETURNED list count. A tool defined above and left out of the return is
+    // exactly the shape of the bug, so declaration alone must not satisfy this.
+    for (const block of src.matchAll(/return \[([\s\S]*?)\]/g)) {
+      for (const m of block[1].matchAll(/hs_([a-z0-9_]+)/g)) out.add(m[1]);
+    }
+    // crewai builds its tools from a table of ("hs_<op>", ...) spec tuples.
+    for (const m of src.matchAll(/\(\s*"hs_([a-z0-9_]+)"\s*,/g)) out.add(m[1]);
+  }
+  return out;
+}
+
 /* -------------------------------------------------------------------- main --- */
 
 const pad = (s, n) => String(s).padEnd(n);
@@ -154,6 +185,14 @@ if (KEY) {
   console.error("note: HS_KEY unset, skipping the live MCP leg.\n");
 }
 
+let python = null;
+try {
+  python = pythonOps(pythonDir);
+} catch (err) {
+  console.error(`WARN: python adapter leg skipped — ${err.message}
+`);
+}
+
 let node = null;
 if (nodePath) {
   try {
@@ -163,22 +202,24 @@ if (nodePath) {
   }
 }
 
-const ids = [...new Set([...spec.ops.keys(), ...(mcp ?? []), ...(node ?? [])])].sort();
+const ids = [...new Set([...spec.ops.keys(), ...(mcp ?? []), ...(node ?? []), ...(python ?? [])])].sort();
 
 console.log(`spec    ${SPEC}`);
 console.log(`servers ${spec.servers.join(", ") || "(none declared)"}\n`);
-console.log(`${pad("operation", 24)}${pad("REST", 7)}${pad("MCP", 6)}n8n`);
-console.log("-".repeat(48));
+console.log(`${pad("operation", 24)}${pad("REST", 7)}${pad("MCP", 6)}${pad("n8n", 6)}py`);
+console.log("-".repeat(54));
 for (const id of ids) {
   const inSpec = spec.ops.has(id);
   const inMcp = mcp ? mcp.has(id) : null;
   const inNode = node ? node.has(id) : null;
+  const inPy = python ? python.has(id) : null;
   const mark = (v) => (v === null ? "–" : v ? "yes" : "NO");
-  console.log(`${pad(id, 24)}${pad(mark(inSpec), 7)}${pad(mark(inMcp), 6)}${mark(inNode)}`);
+  console.log(`${pad(id, 24)}${pad(mark(inSpec), 7)}${pad(mark(inMcp), 6)}${pad(mark(inNode), 6)}${mark(inPy)}`);
 
   if (mcp && inSpec && !inMcp) problems.push(`${id}: in the spec, not served by MCP`);
   if (mcp && !inSpec && inMcp) problems.push(`${id}: served by MCP, absent from the spec`);
   if (node && !inSpec && inNode) problems.push(`${id}: called by the n8n node, absent from the spec`);
+  if (python && !inSpec && inPy) problems.push(`${id}: exposed by a Python adapter, absent from the spec`);
 }
 
 for (const [id, path] of spec.misnamed) {
@@ -186,10 +227,12 @@ for (const [id, path] of spec.misnamed) {
 }
 
 const nodeGaps = node ? [...spec.ops.keys()].filter((id) => !node.has(id)) : [];
+const pyGaps = python ? [...spec.ops.keys()].filter((id) => !python.has(id)) : [];
 
 console.log(`\nspec declares    ${spec.ops.size}`);
 if (mcp) console.log(`MCP serves       ${mcp.size}`);
 if (node) console.log(`n8n node covers  ${node.size}  (missing: ${nodeGaps.join(", ") || "none"})`);
+if (python) console.log(`py adapters cover ${python.size}  (missing: ${pyGaps.join(", ") || "none"})`);
 
 if (problems.length) {
   console.log("\nPARITY FAILED");
@@ -207,4 +250,19 @@ if (nodeGaps.length) {
 }
 console.log();
 
-process.exit(problems.length || (strictNode && nodeGaps.length) ? 1 : 0);
+if (pyGaps.length) {
+  console.log(
+    `\n${strictPython ? "FAIL" : "warn"}: the Python adapters reach ${python.size}/${spec.ops.size} operations.` +
+      (pyGaps.includes("rank_topk")
+        ? "\n  rank_topk is missing - an agent built from these cannot obtain the model_ref its own score_entity tool requires."
+        : "") +
+      (pyGaps.includes("attest_action")
+        ? "\n  attest_action is missing - an integrator cannot close the attest -> report -> evidence loop."
+        : "")
+  );
+}
+
+// process.exitCode, not process.exit(): exiting while a keep-alive fetch socket is still open
+// aborts Node on Windows (a libuv assertion in src/win/async.c), so every local run reported
+// 127 - pass and fail alike - which made this gate unreadable anywhere but Linux CI.
+process.exitCode = problems.length || (strictNode && nodeGaps.length) || (strictPython && pyGaps.length) ? 1 : 0;

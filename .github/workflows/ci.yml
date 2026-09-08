@@ -1,5 +1,10 @@
 name: ci
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  schedule:
+    # Registry drift is not caused by a commit, so a push-only gate can miss it for months.
+    - cron: "0 6 * * 1"
 jobs:
   spec:
     runs-on: ubuntu-latest
@@ -39,12 +44,18 @@ jobs:
         # Path parity is not enough: a node that POSTs to the right URL with the wrong shape is a
         # 422 the user reads as "Hunter-Seeker is broken".
         run: cd n8n && npm test
-      - name: three-way surface parity (spec / MCP / node)
-        # HS_KEY is optional; without it the live MCP leg is skipped and the spec-vs-node legs
-        # still run. Set it as a repository secret to make all three legs live.
+      - name: four-way surface parity (spec / MCP / node / python adapters)
+        # HS_KEY is optional; without it the live MCP leg is skipped and the others still run.
+        # Set it as a repository secret to make every leg live.
+        #
+        # `--strict-python` was added for the same reason `--strict-node` was, one surface later.
+        # hunter_seeker.langchain returned 5 of 16 operations and hunter_seeker.crewai returned 1,
+        # neither included rank_topk, and neither had a single test - so an agent built from either
+        # could not obtain the model_ref its own score_entity tool requires. The parity script had
+        # no leg that could see Python, so the gap could never fail a build.
         env:
           HS_KEY: ${{ secrets.HS_TEST_KEY }}
-        run: node scripts/hs-surface-parity.mjs n8n/dist/nodes/HunterSeeker/HunterSeeker.node.js --strict-node
+        run: node scripts/hs-surface-parity.mjs n8n/dist/nodes/HunterSeeker/HunterSeeker.node.js --strict-node --strict-python
 
   skills:
     runs-on: ubuntu-latest
@@ -55,3 +66,39 @@ jobs:
             head -1 "$f" | grep -q '^---$' || { echo "$f: missing frontmatter"; exit 1; }
             grep -q '^name:' "$f" && grep -q '^description:' "$f" || { echo "$f: frontmatter needs name + description"; exit 1; }
           done; echo skills ok
+
+  registry-installs-clean:
+    # Installs what a USER installs and asserts it matches this checkout. Every other job here
+    # builds from the checkout, which is how hs-verify sat at 0.2.0 in its repo while PyPI and npm
+    # served 0.1.0 - pointing at a host that 308-redirects, which urllib does not follow on the
+    # declared floor - with a green CI and a README saying "published" the whole time.
+    #
+    # Runs on a schedule as well as on push: registry drift is not caused by a commit, so waiting
+    # for one to notice it is how the gap stays open for months.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: PyPI hunter-seeker matches this checkout
+        run: |
+          WANT=$(grep -m1 '^version' python/pyproject.toml | cut -d'"' -f2)
+          pip install --quiet "hunter-seeker==$WANT" || { echo "PyPI has no hunter-seeker $WANT"; exit 1; }
+          cd /tmp && python -c "
+          import hunter_seeker
+          from importlib.metadata import version
+          got = version('hunter-seeker')
+          print('installed', got, '__version__', hunter_seeker.__version__)
+          assert got == '$WANT', f'PyPI serves {got}, this repo is $WANT'
+          # __version__ read 2.0.0 through four releases while pyproject and the User-Agent said 2.1.1.
+          assert hunter_seeker.__version__ == '$WANT', f'__version__ is {hunter_seeker.__version__}, this repo is $WANT'
+          "
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: npm n8n-nodes-hunter-seeker matches this checkout
+        run: |
+          WANT=$(node -p "require('./n8n/package.json').version")
+          cd /tmp && npm install --silent "n8n-nodes-hunter-seeker@$WANT"
+          GOT=$(node -p "require('/tmp/node_modules/n8n-nodes-hunter-seeker/package.json').version")
+          echo "installed $GOT, repo wants $WANT"
+          test "$GOT" = "$WANT"
