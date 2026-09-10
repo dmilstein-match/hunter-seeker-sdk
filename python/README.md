@@ -7,12 +7,13 @@ deterministic, signed, refusable decisions for AI agents.
 
 ```bash
 pip install hunter-seeker
-export HS_API_KEY=hsk_test_...
+hs signup                    # samples-only key: no account, no email, no card
 hs sample                    # ranks a sample dataset and verifies the Verdict
 ```
 ```python
+import os
 from hunter_seeker import Client
-hs = Client()
+hs = Client(api_key=os.environ["HS_API_KEY"])
 out = hs.score_entity(model_ref=ref, row=row, subject_kind="org")
 out["entity"]["band"]                       # act | escalate | refuse
 hs.verify(out["verdict"], out["signature"]) # valid | invalid_signature | expired | unknown_key

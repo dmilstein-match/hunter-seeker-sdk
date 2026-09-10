@@ -36,6 +36,13 @@ const pythonDir = process.env.HS_PYTHON_DIR ?? "python/hunter_seeker";
 const strip = (n) => String(n).replace(/^hs_/, "");
 const kebab = (id) => id.replace(/_/g, "-");
 
+// The rules an operation may be exempted from, via `x-hs-surface-exempt` ON THE OPERATION in the
+// spec. Deliberately not a list of exempt operations kept here: an exception belongs with the thing
+// it excuses, where the next person to read that operation cannot miss it, and where it has to be
+// justified in the same commit that takes it. An exemption naming a rule outside this set is an
+// error, not a no-op, so a typo cannot silently excuse nothing (or everything).
+const RULES = new Set(["naming", "mcp", "n8n", "python-adapters"]);
+
 /* ------------------------------------------------- leg 1: the OpenAPI spec --- */
 
 async function specOps() {
@@ -44,18 +51,45 @@ async function specOps() {
   const doc = await res.json();
 
   const ops = new Map(); // canonical id → path
+  const exempt = new Map(); // canonical id → { rules:Set, reason }
+  const badExemptions = [];
   for (const [path, item] of Object.entries(doc.paths ?? {})) {
     for (const [method, op] of Object.entries(item)) {
       if (method.toLowerCase() !== "post") continue;
       const id = op?.operationId;
-      if (id) ops.set(strip(id), path);
+      if (!id) continue;
+      ops.set(strip(id), path);
+
+      const ex = op["x-hs-surface-exempt"];
+      if (ex === undefined) continue;
+      // An exemption must NAME what it excuses and defend itself in writing. A bare `true`, an
+      // empty reason or an unknown rule is reported as a failure rather than quietly honoured —
+      // an exemption nobody had to justify is how a gate starts rotting, and this gate exists
+      // because a surface once shipped covering 5 of 15 operations with nothing going red.
+      const rules = Array.isArray(ex?.rules) ? ex.rules : [];
+      const reason = typeof ex?.reason === "string" ? ex.reason.trim() : "";
+      const unknown = rules.filter((r) => !RULES.has(r));
+      if (!rules.length || !reason || unknown.length) {
+        badExemptions.push(
+          `${strip(id)}: invalid x-hs-surface-exempt — ` +
+            (!rules.length
+              ? "it names no rules"
+              : unknown.length
+                ? `unknown rule(s): ${unknown.join(", ")}`
+                : "its reason is empty")
+        );
+        continue;
+      }
+      exempt.set(strip(id), { rules: new Set(rules), reason });
     }
   }
   if (!ops.size) throw new Error("spec declared no POST operations");
 
   // The naming rule is meant to be mechanical: hs_rank_topk ↔ /v1/rank-topk.
-  const misnamed = [...ops].filter(([id, path]) => path !== `/v1/${kebab(id)}`);
-  return { ops, misnamed, servers: (doc.servers ?? []).map((s) => s.url) };
+  const misnamed = [...ops].filter(
+    ([id, path]) => path !== `/v1/${kebab(id)}` && !exempt.get(id)?.rules.has("naming")
+  );
+  return { ops, misnamed, exempt, badExemptions, servers: (doc.servers ?? []).map((s) => s.url) };
 }
 
 /* ------------------------------------------------ leg 2: the live MCP server --- */
@@ -206,17 +240,23 @@ const ids = [...new Set([...spec.ops.keys(), ...(mcp ?? []), ...(node ?? []), ..
 
 console.log(`spec    ${SPEC}`);
 console.log(`servers ${spec.servers.join(", ") || "(none declared)"}\n`);
-console.log(`${pad("operation", 24)}${pad("REST", 7)}${pad("MCP", 6)}${pad("n8n", 6)}py`);
+const exemptFrom = (id, rule) => spec.exempt.get(id)?.rules.has(rule) ?? false;
+
+console.log(`${pad("operation", 24)}${pad("REST", 7)}${pad("MCP", 8)}${pad("n8n", 8)}py`);
 console.log("-".repeat(54));
 for (const id of ids) {
   const inSpec = spec.ops.has(id);
   const inMcp = mcp ? mcp.has(id) : null;
   const inNode = node ? node.has(id) : null;
   const inPy = python ? python.has(id) : null;
-  const mark = (v) => (v === null ? "–" : v ? "yes" : "NO");
-  console.log(`${pad(id, 24)}${pad(mark(inSpec), 7)}${pad(mark(inMcp), 6)}${pad(mark(inNode), 6)}${mark(inPy)}`);
+  // An exempt surface reads "exempt", never "yes": the table must not claim coverage that does
+  // not exist, only record that its absence was argued for.
+  const mark = (v, rule) => (v === null ? "–" : v ? "yes" : rule && exemptFrom(id, rule) ? "exempt" : "NO");
+  console.log(
+    `${pad(id, 24)}${pad(mark(inSpec), 7)}${pad(mark(inMcp, "mcp"), 8)}${pad(mark(inNode, "n8n"), 8)}${mark(inPy, "python-adapters")}`
+  );
 
-  if (mcp && inSpec && !inMcp) problems.push(`${id}: in the spec, not served by MCP`);
+  if (mcp && inSpec && !inMcp && !exemptFrom(id, "mcp")) problems.push(`${id}: in the spec, not served by MCP`);
   if (mcp && !inSpec && inMcp) problems.push(`${id}: served by MCP, absent from the spec`);
   if (node && !inSpec && inNode) problems.push(`${id}: called by the n8n node, absent from the spec`);
   if (python && !inSpec && inPy) problems.push(`${id}: exposed by a Python adapter, absent from the spec`);
@@ -226,13 +266,34 @@ for (const [id, path] of spec.misnamed) {
   problems.push(`${id}: path "${path}" breaks the /v1/<kebab> naming rule`);
 }
 
-const nodeGaps = node ? [...spec.ops.keys()].filter((id) => !node.has(id)) : [];
-const pyGaps = python ? [...spec.ops.keys()].filter((id) => !python.has(id)) : [];
+const nodeGaps = node ? [...spec.ops.keys()].filter((id) => !node.has(id) && !exemptFrom(id, "n8n")) : [];
+const pyGaps = python
+  ? [...spec.ops.keys()].filter((id) => !python.has(id) && !exemptFrom(id, "python-adapters"))
+  : [];
+const exemptCount = (rule) => [...spec.exempt.values()].filter((e) => e.rules.has(rule)).length;
 
 console.log(`\nspec declares    ${spec.ops.size}`);
 if (mcp) console.log(`MCP serves       ${mcp.size}`);
-if (node) console.log(`n8n node covers  ${node.size}  (missing: ${nodeGaps.join(", ") || "none"})`);
-if (python) console.log(`py adapters cover ${python.size}  (missing: ${pyGaps.join(", ") || "none"})`);
+if (node)
+  console.log(
+    `n8n node covers  ${node.size}  (missing: ${nodeGaps.join(", ") || "none"}${exemptCount("n8n") ? `, exempt: ${exemptCount("n8n")}` : ""})`
+  );
+if (python)
+  console.log(
+    `py adapters cover ${python.size}  (missing: ${pyGaps.join(", ") || "none"}${exemptCount("python-adapters") ? `, exempt: ${exemptCount("python-adapters")}` : ""})`
+  );
+
+// An exemption that nobody ever reads is the same as no gate at all, so every one of them is
+// printed on every run, with its reason, pass or fail.
+if (spec.exempt.size) {
+  console.log(`\nexemptions (${spec.exempt.size}) — declared on the operation in the spec:`);
+  for (const [id, { rules, reason }] of spec.exempt) {
+    console.log(`  · ${id} — exempt from ${[...rules].join(", ")}`);
+    for (const line of reason.match(/.{1,92}(\s|$)/g) ?? [reason]) console.log(`      ${line.trim()}`);
+  }
+}
+
+problems.push(...spec.badExemptions);
 
 if (problems.length) {
   console.log("\nPARITY FAILED");
