@@ -1,0 +1,1115 @@
+{
+ "generated_by": "hunter-seeker-engine worker/src/readings/trace.py run(df, roles, {}) at engine main 77e3a83 (0.3.6), over `rows`, by gen_trace_golden.py. r010/r011 share an instant AND every group value (a tie is not an earlier run); r031 is one microsecond after r030 with the same groups (one microsecond IS earlier); r020 has an unparsable ts; ~1/3 of agents are null.",
+ "roles": {
+  "identifier": "run_id",
+  "time_axis": "ts",
+  "outcome": "failed",
+  "agent": "agent",
+  "task": "task",
+  "tool": "tool"
+ },
+ "rows": [
+  {
+   "run_id": "r000",
+   "ts": "2026-01-01T00:00:00Z",
+   "agent": "a2",
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 895,
+   "failed": 0
+  },
+  {
+   "run_id": "r001",
+   "ts": "2026-01-01T00:07:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 975,
+   "failed": 1
+  },
+  {
+   "run_id": "r002",
+   "ts": "2026-01-01T00:14:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 4052,
+   "failed": 0
+  },
+  {
+   "run_id": "r003",
+   "ts": "2026-01-01T00:21:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 3977,
+   "failed": 0
+  },
+  {
+   "run_id": "r004",
+   "ts": "2026-01-01T00:28:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 1006,
+   "failed": 1
+  },
+  {
+   "run_id": "r005",
+   "ts": "2026-01-01T00:35:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "browser",
+   "input_tokens": 2311,
+   "failed": 0
+  },
+  {
+   "run_id": "r006",
+   "ts": "2026-01-01T00:42:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 3933,
+   "failed": 0
+  },
+  {
+   "run_id": "r007",
+   "ts": "2026-01-01T00:49:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "api",
+   "input_tokens": 3027,
+   "failed": 1
+  },
+  {
+   "run_id": "r008",
+   "ts": "2026-01-01T00:56:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 2039,
+   "failed": 0
+  },
+  {
+   "run_id": "r009",
+   "ts": "2026-01-01T01:03:00Z",
+   "agent": "a1",
+   "task": "t3",
+   "tool": "api",
+   "input_tokens": 1014,
+   "failed": 1
+  },
+  {
+   "run_id": "r010",
+   "ts": "2026-01-01T01:10:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 4566,
+   "failed": 1
+  },
+  {
+   "run_id": "r011",
+   "ts": "2026-01-01T01:10:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 4314,
+   "failed": 0
+  },
+  {
+   "run_id": "r012",
+   "ts": "2026-01-01T01:24:00Z",
+   "agent": "a2",
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 2535,
+   "failed": 0
+  },
+  {
+   "run_id": "r013",
+   "ts": "2026-01-01T01:31:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 2959,
+   "failed": 1
+  },
+  {
+   "run_id": "r014",
+   "ts": "2026-01-01T01:38:00Z",
+   "agent": "a2",
+   "task": "t2",
+   "tool": "api",
+   "input_tokens": 4176,
+   "failed": 0
+  },
+  {
+   "run_id": "r015",
+   "ts": "2026-01-01T01:45:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 4693,
+   "failed": 0
+  },
+  {
+   "run_id": "r016",
+   "ts": "2026-01-01T01:52:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "browser",
+   "input_tokens": 4505,
+   "failed": 0
+  },
+  {
+   "run_id": "r017",
+   "ts": "2026-01-01T01:59:00Z",
+   "agent": "a1",
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 3070,
+   "failed": 0
+  },
+  {
+   "run_id": "r018",
+   "ts": "2026-01-01T02:06:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "api",
+   "input_tokens": 4568,
+   "failed": 1
+  },
+  {
+   "run_id": "r019",
+   "ts": "2026-01-01T02:13:00Z",
+   "agent": "a2",
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 2711,
+   "failed": 0
+  },
+  {
+   "run_id": "r020",
+   "ts": "not a time",
+   "agent": null,
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 997,
+   "failed": 1
+  },
+  {
+   "run_id": "r021",
+   "ts": "2026-01-01T02:27:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "api",
+   "input_tokens": 4150,
+   "failed": 0
+  },
+  {
+   "run_id": "r022",
+   "ts": "2026-01-01T02:34:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "api",
+   "input_tokens": 3342,
+   "failed": 0
+  },
+  {
+   "run_id": "r023",
+   "ts": "2026-01-01T02:41:00Z",
+   "agent": "a2",
+   "task": "t2",
+   "tool": "browser",
+   "input_tokens": 1459,
+   "failed": 0
+  },
+  {
+   "run_id": "r024",
+   "ts": "2026-01-01T02:48:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 1559,
+   "failed": 1
+  },
+  {
+   "run_id": "r025",
+   "ts": "2026-01-01T02:55:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 4567,
+   "failed": 0
+  },
+  {
+   "run_id": "r026",
+   "ts": "2026-01-01T03:02:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 2776,
+   "failed": 0
+  },
+  {
+   "run_id": "r027",
+   "ts": "2026-01-01T03:09:00Z",
+   "agent": "a2",
+   "task": "t3",
+   "tool": "shell",
+   "input_tokens": 3902,
+   "failed": 0
+  },
+  {
+   "run_id": "r028",
+   "ts": "2026-01-01T03:16:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "browser",
+   "input_tokens": 1736,
+   "failed": 0
+  },
+  {
+   "run_id": "r029",
+   "ts": "2026-01-01T03:23:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 2411,
+   "failed": 0
+  },
+  {
+   "run_id": "r030",
+   "ts": "2026-01-01T03:30:00Z",
+   "agent": "a2",
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 2652,
+   "failed": 0
+  },
+  {
+   "run_id": "r031",
+   "ts": "2026-01-01T03:30:00.000001Z",
+   "agent": "a2",
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 4879,
+   "failed": 0
+  },
+  {
+   "run_id": "r032",
+   "ts": "2026-01-01T03:44:00Z",
+   "agent": null,
+   "task": "t3",
+   "tool": "shell",
+   "input_tokens": 1528,
+   "failed": 1
+  },
+  {
+   "run_id": "r033",
+   "ts": "2026-01-01T03:51:00Z",
+   "agent": null,
+   "task": "t3",
+   "tool": "api",
+   "input_tokens": 942,
+   "failed": 0
+  },
+  {
+   "run_id": "r034",
+   "ts": "2026-01-01T03:58:00Z",
+   "agent": null,
+   "task": "t3",
+   "tool": "shell",
+   "input_tokens": 3760,
+   "failed": 0
+  },
+  {
+   "run_id": "r035",
+   "ts": "2026-01-01T04:05:00Z",
+   "agent": "a2",
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 3780,
+   "failed": 0
+  },
+  {
+   "run_id": "r036",
+   "ts": "2026-01-01T04:12:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 4109,
+   "failed": 0
+  },
+  {
+   "run_id": "r037",
+   "ts": "2026-01-01T04:19:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "api",
+   "input_tokens": 930,
+   "failed": 0
+  },
+  {
+   "run_id": "r038",
+   "ts": "2026-01-01T04:26:00Z",
+   "agent": "a1",
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 4895,
+   "failed": 0
+  },
+  {
+   "run_id": "r039",
+   "ts": "2026-01-01T04:33:00Z",
+   "agent": "a2",
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 1076,
+   "failed": 0
+  },
+  {
+   "run_id": "r040",
+   "ts": "2026-01-01T04:40:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "browser",
+   "input_tokens": 2566,
+   "failed": 0
+  },
+  {
+   "run_id": "r041",
+   "ts": "2026-01-01T04:47:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 1506,
+   "failed": 0
+  },
+  {
+   "run_id": "r042",
+   "ts": "2026-01-01T04:54:00Z",
+   "agent": "a2",
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 4463,
+   "failed": 0
+  },
+  {
+   "run_id": "r043",
+   "ts": "2026-01-01T05:01:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 3306,
+   "failed": 1
+  },
+  {
+   "run_id": "r044",
+   "ts": "2026-01-01T05:08:00Z",
+   "agent": "a2",
+   "task": "t2",
+   "tool": "api",
+   "input_tokens": 1822,
+   "failed": 1
+  },
+  {
+   "run_id": "r045",
+   "ts": "2026-01-01T05:15:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "api",
+   "input_tokens": 3463,
+   "failed": 0
+  },
+  {
+   "run_id": "r046",
+   "ts": "2026-01-01T05:22:00Z",
+   "agent": null,
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 4826,
+   "failed": 0
+  },
+  {
+   "run_id": "r047",
+   "ts": "2026-01-01T05:29:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "api",
+   "input_tokens": 2639,
+   "failed": 1
+  },
+  {
+   "run_id": "r048",
+   "ts": "2026-01-01T05:36:00Z",
+   "agent": "a2",
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 2325,
+   "failed": 1
+  },
+  {
+   "run_id": "r049",
+   "ts": "2026-01-01T05:43:00Z",
+   "agent": null,
+   "task": "t3",
+   "tool": "shell",
+   "input_tokens": 2327,
+   "failed": 1
+  },
+  {
+   "run_id": "r050",
+   "ts": "2026-01-01T05:50:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 2357,
+   "failed": 0
+  },
+  {
+   "run_id": "r051",
+   "ts": "2026-01-01T05:57:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 737,
+   "failed": 0
+  },
+  {
+   "run_id": "r052",
+   "ts": "2026-01-01T06:04:00Z",
+   "agent": "a2",
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 2086,
+   "failed": 1
+  },
+  {
+   "run_id": "r053",
+   "ts": "2026-01-01T06:11:00Z",
+   "agent": null,
+   "task": "t2",
+   "tool": "shell",
+   "input_tokens": 3363,
+   "failed": 0
+  },
+  {
+   "run_id": "r054",
+   "ts": "2026-01-01T06:18:00Z",
+   "agent": "a1",
+   "task": "t1",
+   "tool": "browser",
+   "input_tokens": 2358,
+   "failed": 0
+  },
+  {
+   "run_id": "r055",
+   "ts": "2026-01-01T06:25:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "browser",
+   "input_tokens": 4453,
+   "failed": 1
+  },
+  {
+   "run_id": "r056",
+   "ts": "2026-01-01T06:32:00Z",
+   "agent": null,
+   "task": "t1",
+   "tool": "shell",
+   "input_tokens": 3318,
+   "failed": 1
+  },
+  {
+   "run_id": "r057",
+   "ts": "2026-01-01T06:39:00Z",
+   "agent": "a1",
+   "task": "t3",
+   "tool": "browser",
+   "input_tokens": 3682,
+   "failed": 1
+  },
+  {
+   "run_id": "r058",
+   "ts": "2026-01-01T06:46:00Z",
+   "agent": "a1",
+   "task": "t2",
+   "tool": "browser",
+   "input_tokens": 4054,
+   "failed": 1
+  },
+  {
+   "run_id": "r059",
+   "ts": "2026-01-01T06:53:00Z",
+   "agent": "a2",
+   "task": "t1",
+   "tool": "api",
+   "input_tokens": 3742,
+   "failed": 0
+  }
+ ],
+ "expected": [
+  {
+   "run_id": "r000",
+   "agent_prior_n": 0,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 0,
+   "task_prior_outcome_rate": null,
+   "tool_prior_n": 0,
+   "tool_prior_outcome_rate": null
+  },
+  {
+   "run_id": "r001",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 1,
+   "task_prior_outcome_rate": 0.0,
+   "tool_prior_n": 1,
+   "tool_prior_outcome_rate": 0.0
+  },
+  {
+   "run_id": "r002",
+   "agent_prior_n": 0,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 2,
+   "task_prior_outcome_rate": 0.5,
+   "tool_prior_n": 0,
+   "tool_prior_outcome_rate": null
+  },
+  {
+   "run_id": "r003",
+   "agent_prior_n": 1,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 3,
+   "task_prior_outcome_rate": 0.3333333333333333,
+   "tool_prior_n": 1,
+   "tool_prior_outcome_rate": 0.0
+  },
+  {
+   "run_id": "r004",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 4,
+   "task_prior_outcome_rate": 0.25,
+   "tool_prior_n": 2,
+   "tool_prior_outcome_rate": 0.0
+  },
+  {
+   "run_id": "r005",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 0,
+   "task_prior_outcome_rate": null,
+   "tool_prior_n": 3,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r006",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 5,
+   "task_prior_outcome_rate": 0.4,
+   "tool_prior_n": 2,
+   "tool_prior_outcome_rate": 0.5
+  },
+  {
+   "run_id": "r007",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 6,
+   "task_prior_outcome_rate": 0.3333333333333333,
+   "tool_prior_n": 0,
+   "tool_prior_outcome_rate": null
+  },
+  {
+   "run_id": "r008",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 7,
+   "task_prior_outcome_rate": 0.42857142857142855,
+   "tool_prior_n": 4,
+   "tool_prior_outcome_rate": 0.25
+  },
+  {
+   "run_id": "r009",
+   "agent_prior_n": 2,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 0,
+   "task_prior_outcome_rate": null,
+   "tool_prior_n": 1,
+   "tool_prior_outcome_rate": 1.0
+  },
+  {
+   "run_id": "r010",
+   "agent_prior_n": 3,
+   "agent_prior_outcome_rate": 0.3333333333333333,
+   "task_prior_n": 1,
+   "task_prior_outcome_rate": 0.0,
+   "tool_prior_n": 3,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r011",
+   "agent_prior_n": 3,
+   "agent_prior_outcome_rate": 0.3333333333333333,
+   "task_prior_n": 1,
+   "task_prior_outcome_rate": 0.0,
+   "tool_prior_n": 3,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r012",
+   "agent_prior_n": 1,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 3,
+   "task_prior_outcome_rate": 0.3333333333333333,
+   "tool_prior_n": 5,
+   "tool_prior_outcome_rate": 0.4
+  },
+  {
+   "run_id": "r013",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 8,
+   "task_prior_outcome_rate": 0.375,
+   "tool_prior_n": 5,
+   "tool_prior_outcome_rate": 0.2
+  },
+  {
+   "run_id": "r014",
+   "agent_prior_n": 2,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 4,
+   "task_prior_outcome_rate": 0.25,
+   "tool_prior_n": 2,
+   "tool_prior_outcome_rate": 1.0
+  },
+  {
+   "run_id": "r015",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 9,
+   "task_prior_outcome_rate": 0.4444444444444444,
+   "tool_prior_n": 6,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r016",
+   "agent_prior_n": 5,
+   "agent_prior_outcome_rate": 0.4,
+   "task_prior_n": 5,
+   "task_prior_outcome_rate": 0.2,
+   "tool_prior_n": 7,
+   "tool_prior_outcome_rate": 0.2857142857142857
+  },
+  {
+   "run_id": "r017",
+   "agent_prior_n": 6,
+   "agent_prior_outcome_rate": 0.3333333333333333,
+   "task_prior_n": 1,
+   "task_prior_outcome_rate": 1.0,
+   "tool_prior_n": 8,
+   "tool_prior_outcome_rate": 0.25
+  },
+  {
+   "run_id": "r018",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 6,
+   "task_prior_outcome_rate": 0.16666666666666666,
+   "tool_prior_n": 3,
+   "tool_prior_outcome_rate": 0.6666666666666666
+  },
+  {
+   "run_id": "r019",
+   "agent_prior_n": 3,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 10,
+   "task_prior_outcome_rate": 0.4,
+   "tool_prior_n": 9,
+   "tool_prior_outcome_rate": 0.2222222222222222
+  },
+  {
+   "run_id": "r020",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": null,
+   "task_prior_outcome_rate": null,
+   "tool_prior_n": null,
+   "tool_prior_outcome_rate": null
+  },
+  {
+   "run_id": "r021",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 7,
+   "task_prior_outcome_rate": 0.2857142857142857,
+   "tool_prior_n": 4,
+   "tool_prior_outcome_rate": 0.75
+  },
+  {
+   "run_id": "r022",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 8,
+   "task_prior_outcome_rate": 0.25,
+   "tool_prior_n": 5,
+   "tool_prior_outcome_rate": 0.6
+  },
+  {
+   "run_id": "r023",
+   "agent_prior_n": 4,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 9,
+   "task_prior_outcome_rate": 0.2222222222222222,
+   "tool_prior_n": 10,
+   "tool_prior_outcome_rate": 0.2
+  },
+  {
+   "run_id": "r024",
+   "agent_prior_n": 7,
+   "agent_prior_outcome_rate": 0.2857142857142857,
+   "task_prior_n": 11,
+   "task_prior_outcome_rate": 0.36363636363636365,
+   "tool_prior_n": 6,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r025",
+   "agent_prior_n": 8,
+   "agent_prior_outcome_rate": 0.375,
+   "task_prior_n": 10,
+   "task_prior_outcome_rate": 0.2,
+   "tool_prior_n": 7,
+   "tool_prior_outcome_rate": 0.42857142857142855
+  },
+  {
+   "run_id": "r026",
+   "agent_prior_n": 9,
+   "agent_prior_outcome_rate": 0.3333333333333333,
+   "task_prior_n": 11,
+   "task_prior_outcome_rate": 0.18181818181818182,
+   "tool_prior_n": 8,
+   "tool_prior_outcome_rate": 0.375
+  },
+  {
+   "run_id": "r027",
+   "agent_prior_n": 5,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 2,
+   "task_prior_outcome_rate": 0.5,
+   "tool_prior_n": 9,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r028",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 12,
+   "task_prior_outcome_rate": 0.16666666666666666,
+   "tool_prior_n": 11,
+   "tool_prior_outcome_rate": 0.18181818181818182
+  },
+  {
+   "run_id": "r029",
+   "agent_prior_n": 10,
+   "agent_prior_outcome_rate": 0.3,
+   "task_prior_n": 12,
+   "task_prior_outcome_rate": 0.4166666666666667,
+   "tool_prior_n": 12,
+   "tool_prior_outcome_rate": 0.16666666666666666
+  },
+  {
+   "run_id": "r030",
+   "agent_prior_n": 6,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 3,
+   "task_prior_outcome_rate": 0.3333333333333333,
+   "tool_prior_n": 13,
+   "tool_prior_outcome_rate": 0.15384615384615385
+  },
+  {
+   "run_id": "r031",
+   "agent_prior_n": 7,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 4,
+   "task_prior_outcome_rate": 0.25,
+   "tool_prior_n": 14,
+   "tool_prior_outcome_rate": 0.14285714285714285
+  },
+  {
+   "run_id": "r032",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 5,
+   "task_prior_outcome_rate": 0.2,
+   "tool_prior_n": 10,
+   "tool_prior_outcome_rate": 0.3
+  },
+  {
+   "run_id": "r033",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 6,
+   "task_prior_outcome_rate": 0.3333333333333333,
+   "tool_prior_n": 6,
+   "tool_prior_outcome_rate": 0.5
+  },
+  {
+   "run_id": "r034",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 7,
+   "task_prior_outcome_rate": 0.2857142857142857,
+   "tool_prior_n": 11,
+   "tool_prior_outcome_rate": 0.36363636363636365
+  },
+  {
+   "run_id": "r035",
+   "agent_prior_n": 8,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 13,
+   "task_prior_outcome_rate": 0.38461538461538464,
+   "tool_prior_n": 12,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r036",
+   "agent_prior_n": 11,
+   "agent_prior_outcome_rate": 0.2727272727272727,
+   "task_prior_n": 14,
+   "task_prior_outcome_rate": 0.35714285714285715,
+   "tool_prior_n": 15,
+   "tool_prior_outcome_rate": 0.13333333333333333
+  },
+  {
+   "run_id": "r037",
+   "agent_prior_n": 12,
+   "agent_prior_outcome_rate": 0.25,
+   "task_prior_n": 13,
+   "task_prior_outcome_rate": 0.15384615384615385,
+   "tool_prior_n": 7,
+   "tool_prior_outcome_rate": 0.42857142857142855
+  },
+  {
+   "run_id": "r038",
+   "agent_prior_n": 13,
+   "agent_prior_outcome_rate": 0.23076923076923078,
+   "task_prior_n": 8,
+   "task_prior_outcome_rate": 0.25,
+   "tool_prior_n": 16,
+   "tool_prior_outcome_rate": 0.125
+  },
+  {
+   "run_id": "r039",
+   "agent_prior_n": 9,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 9,
+   "task_prior_outcome_rate": 0.2222222222222222,
+   "tool_prior_n": 17,
+   "tool_prior_outcome_rate": 0.11764705882352941
+  },
+  {
+   "run_id": "r040",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 14,
+   "task_prior_outcome_rate": 0.14285714285714285,
+   "tool_prior_n": 18,
+   "tool_prior_outcome_rate": 0.1111111111111111
+  },
+  {
+   "run_id": "r041",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 15,
+   "task_prior_outcome_rate": 0.13333333333333333,
+   "tool_prior_n": 13,
+   "tool_prior_outcome_rate": 0.3076923076923077
+  },
+  {
+   "run_id": "r042",
+   "agent_prior_n": 10,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 16,
+   "task_prior_outcome_rate": 0.125,
+   "tool_prior_n": 14,
+   "tool_prior_outcome_rate": 0.2857142857142857
+  },
+  {
+   "run_id": "r043",
+   "agent_prior_n": 14,
+   "agent_prior_outcome_rate": 0.21428571428571427,
+   "task_prior_n": 15,
+   "task_prior_outcome_rate": 0.3333333333333333,
+   "tool_prior_n": 19,
+   "tool_prior_outcome_rate": 0.10526315789473684
+  },
+  {
+   "run_id": "r044",
+   "agent_prior_n": 11,
+   "agent_prior_outcome_rate": 0.0,
+   "task_prior_n": 17,
+   "task_prior_outcome_rate": 0.11764705882352941,
+   "tool_prior_n": 8,
+   "tool_prior_outcome_rate": 0.375
+  },
+  {
+   "run_id": "r045",
+   "agent_prior_n": 15,
+   "agent_prior_outcome_rate": 0.26666666666666666,
+   "task_prior_n": 16,
+   "task_prior_outcome_rate": 0.375,
+   "tool_prior_n": 9,
+   "tool_prior_outcome_rate": 0.4444444444444444
+  },
+  {
+   "run_id": "r046",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 10,
+   "task_prior_outcome_rate": 0.2,
+   "tool_prior_n": 20,
+   "tool_prior_outcome_rate": 0.15
+  },
+  {
+   "run_id": "r047",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 17,
+   "task_prior_outcome_rate": 0.35294117647058826,
+   "tool_prior_n": 10,
+   "tool_prior_outcome_rate": 0.4
+  },
+  {
+   "run_id": "r048",
+   "agent_prior_n": 12,
+   "agent_prior_outcome_rate": 0.08333333333333333,
+   "task_prior_n": 18,
+   "task_prior_outcome_rate": 0.3888888888888889,
+   "tool_prior_n": 15,
+   "tool_prior_outcome_rate": 0.26666666666666666
+  },
+  {
+   "run_id": "r049",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 11,
+   "task_prior_outcome_rate": 0.18181818181818182,
+   "tool_prior_n": 16,
+   "tool_prior_outcome_rate": 0.3125
+  },
+  {
+   "run_id": "r050",
+   "agent_prior_n": 16,
+   "agent_prior_outcome_rate": 0.25,
+   "task_prior_n": 19,
+   "task_prior_outcome_rate": 0.42105263157894735,
+   "tool_prior_n": 17,
+   "tool_prior_outcome_rate": 0.35294117647058826
+  },
+  {
+   "run_id": "r051",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 18,
+   "task_prior_outcome_rate": 0.16666666666666666,
+   "tool_prior_n": 18,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r052",
+   "agent_prior_n": 13,
+   "agent_prior_outcome_rate": 0.15384615384615385,
+   "task_prior_n": 19,
+   "task_prior_outcome_rate": 0.15789473684210525,
+   "tool_prior_n": 19,
+   "tool_prior_outcome_rate": 0.3157894736842105
+  },
+  {
+   "run_id": "r053",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 20,
+   "task_prior_outcome_rate": 0.2,
+   "tool_prior_n": 20,
+   "tool_prior_outcome_rate": 0.35
+  },
+  {
+   "run_id": "r054",
+   "agent_prior_n": 17,
+   "agent_prior_outcome_rate": 0.23529411764705882,
+   "task_prior_n": 20,
+   "task_prior_outcome_rate": 0.4,
+   "tool_prior_n": 21,
+   "tool_prior_outcome_rate": 0.14285714285714285
+  },
+  {
+   "run_id": "r055",
+   "agent_prior_n": 18,
+   "agent_prior_outcome_rate": 0.2222222222222222,
+   "task_prior_n": 21,
+   "task_prior_outcome_rate": 0.19047619047619047,
+   "tool_prior_n": 22,
+   "tool_prior_outcome_rate": 0.13636363636363635
+  },
+  {
+   "run_id": "r056",
+   "agent_prior_n": null,
+   "agent_prior_outcome_rate": null,
+   "task_prior_n": 21,
+   "task_prior_outcome_rate": 0.38095238095238093,
+   "tool_prior_n": 21,
+   "tool_prior_outcome_rate": 0.3333333333333333
+  },
+  {
+   "run_id": "r057",
+   "agent_prior_n": 19,
+   "agent_prior_outcome_rate": 0.2631578947368421,
+   "task_prior_n": 12,
+   "task_prior_outcome_rate": 0.25,
+   "tool_prior_n": 23,
+   "tool_prior_outcome_rate": 0.17391304347826086
+  },
+  {
+   "run_id": "r058",
+   "agent_prior_n": 20,
+   "agent_prior_outcome_rate": 0.3,
+   "task_prior_n": 22,
+   "task_prior_outcome_rate": 0.22727272727272727,
+   "tool_prior_n": 24,
+   "tool_prior_outcome_rate": 0.20833333333333334
+  },
+  {
+   "run_id": "r059",
+   "agent_prior_n": 14,
+   "agent_prior_outcome_rate": 0.21428571428571427,
+   "task_prior_n": 22,
+   "task_prior_outcome_rate": 0.4090909090909091,
+   "tool_prior_n": 11,
+   "tool_prior_outcome_rate": 0.45454545454545453
+  }
+ ],
+ "report": {
+  "rows_in": 60,
+  "rows_out": 60,
+  "groups_bound": [
+   "agent",
+   "task",
+   "tool"
+  ],
+  "group_entities": {
+   "agent": 2,
+   "task": 3,
+   "tool": 3
+  },
+  "group_null_rows": {
+   "agent": 24,
+   "task": 1,
+   "tool": 1
+  },
+  "time_axis_parsed_as": "mixed"
+ }
+}

@@ -42,10 +42,10 @@ jobs:
           python-version: '3.12'
 
       - name: test
-        # pydantic is what the crewai adapter builds its tool models from — without it the adapter
-        # parity tests skip, and a release must not be cut on a suite that skipped the tests that
-        # prove every surface still reaches every operation.
-        run: cd python && python -m pip install --quiet pytest pydantic && python -m pytest tests -q
+        # The same `test` extra CI installs, so a release is cut on the suite CI ran — including the
+        # adapter tests that drive real langchain and claude-agent-sdk. A release must not be cut on
+        # a suite that skipped the tests proving every surface still reaches every operation.
+        run: cd python && python -m pip install --quiet -e ".[test]" && python -m pytest tests -q
 
       - name: build
         run: cd python && python -m pip install --quiet build && python -m build

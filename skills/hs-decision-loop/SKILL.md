@@ -27,7 +27,7 @@ response does not contain. Rephrase; never author.
 | 9 Attest | `hs_attest_action(lever_token, post_value)` | free |
 | 10 Report | `hs_report_outcome` — the real-world binary you observed | free |
 | 11 Judge | `hs_action_evidence`, `hs_drift_status` | free |
-| 12 Refit | `hs_rank_topk(refit_of: model_ref)` when drift says so | **one run** |
+| 12 Refit | `hs_rank_topk(refit_of: model_ref)` when drift says so — and pass `refit_of` on EVERY fit after the first, or `hs_drift_status` never has a prior (measured: 19 cycles, `no_prior`) | **one run** |
 
 ## Reading a Verdict
 
