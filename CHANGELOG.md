@@ -60,6 +60,17 @@ serves as 2.1.1, and a PyPI version is immutable.
 - The README five-minute test and the Python quickstart use `hs signup` instead of handing out a
   pasteable fake key; `README.md` had carried a literal U+2026 in one. `python/README.md` showed
   `Client()`, which raises — the constructor requires a credential.
+- `hs-surface-parity.mjs` honours `x-hs-surface-exempt`, declared on the operation in the spec.
+  `register_agent` was failing four rules at once — the `/v1/<kebab>` naming rule, the live
+  `tools/list` leg (latent: it only passes today because `HS_KEY` is usually unset), and n8n and
+  Python adapter coverage. All four readings were correct and none of them should apply: it is the
+  call you make BEFORE you hold a credential, and both "missing" surfaces are reached only by
+  presenting one. Invariant 1 is amended to "every AUTHENTICATED operation" so the doc matches.
+  The mechanism is built to resist rot: an exemption must name the rules it claims and carry a
+  non-empty written reason or it FAILS rather than being honoured, an unknown rule name is an
+  error rather than a silent no-op, an exempt surface prints as `exempt` and never as `yes`, and
+  every exemption prints with its reason on every run.
+  `scripts/hs-surface-parity.test.mjs` pins all of that with deliberate violations.
 
 ## 2.0.0 — unreleased
 - Python client for the full tool contract 2.0.0 (rank, score, verify, report, attest, evidence, drift, bundle).

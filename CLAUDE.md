@@ -6,16 +6,33 @@ Agent Skills. The engine's contract with the outside world is not the engine —
 
 ## The two invariants
 
-**1. Every surface reaches every operation.** A surface that covers part of the contract is not a
-thin surface, it is a broken one. The n8n node shipped covering 5 of 15 operations, and the 5 did
-not include `attest_action` or `explain_levers` — so an integrator could score and report but never
-attest, and never obtain the `lever_token` an attestation needs. The governance loop the product
-exists to provide was unreachable from its own integration, and nothing failed. The Python adapters
-then shipped in exactly the same shape (`langchain` 5 of 16, `crewai` 1) with zero tests, and the
-parity script had no leg that could see them.
+**1. Every surface reaches every AUTHENTICATED operation.** A surface that covers part of the
+contract is not a thin surface, it is a broken one. The n8n node shipped covering 5 of 15
+operations, and the 5 did not include `attest_action` or `explain_levers` — so an integrator could
+score and report but never attest, and never obtain the `lever_token` an attestation needs. The
+governance loop the product exists to provide was unreachable from its own integration, and nothing
+failed. The Python adapters then shipped in exactly the same shape (`langchain` 5 of 16, `crewai`
+1) with zero tests, and the parity script had no leg that could see them.
 
 `scripts/hs-surface-parity.mjs` now compares four surfaces — spec, live MCP, n8n node, Python
 adapters — and CI runs it with `--strict-node --strict-python`.
+
+The word "authenticated" is doing work. `register_agent` is the one operation you call BEFORE you
+hold a credential, so it cannot be a gap in a credentialed workflow — which is the harm above. n8n
+is configured through a stored `HunterSeekerApi` credential and the Python adapters take an
+already-authenticated `Client`, so neither has a coherent place for it; Python does reach it, via
+`hs signup`, which this script has no leg for. It is therefore exempt, and the exemption is
+declared **on the operation in the spec** (`x-hs-surface-exempt`, generated from
+`packages/mcp/scripts/build-openapi.mts` in the product repo) rather than as a list inside the
+script — an exception belongs with the thing it excuses.
+
+The mechanism is deliberately hard to abuse: an exemption must name the rules it claims
+(`naming` · `mcp` · `n8n` · `python-adapters`) and carry a non-empty written reason, or it FAILS
+rather than being honoured; an unknown rule name is an error, not a silent no-op; and every
+exemption prints with its reason on every run. `scripts/hs-surface-parity.test.mjs` pins this with
+deliberate violations — the same spec with the exemption removed must go red, and one operation's
+exemption must not excuse another's gap. Do not add an exemption to make a gate green. There is
+exactly one, and it took a written argument.
 
 **2. What the registries serve equals what this repo says.** `hunter_seeker.__version__` read
 `2.0.0` through four releases while `pyproject.toml` and the User-Agent said otherwise, so the
@@ -29,6 +46,7 @@ cd python && PYTHONPATH=. python -m pytest -q
 cd n8n && npm ci && npm run build && npm test
 node scripts/hs-surface-parity.mjs n8n/dist/nodes/HunterSeeker/HunterSeeker.node.js \
      --strict-node --strict-python
+node --test scripts/hs-surface-parity.test.mjs
 python scripts/check_spec.py
 ```
 
