@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.2.0 — unreleased
+## 2.2.0 — 2026-09-10
 
 Everything below landed after 2.1.2 was uploaded to PyPI (2026-09-08 18:23 UTC). PyPI versions
 are immutable, so it ships as 2.2.0 — new modules, no breaking change.
@@ -15,11 +15,17 @@ are immutable, so it ships as 2.2.0 — new modules, no breaking change.
   `era_lock` grades a pattern's conditions against time, rebuilt from `operator` and
   `missing_values`, because the `_prior_n` emits are monotone counters and `agent_prior_n > 97`
   is a date filter wearing a feature's name.
-- New `hunter_seeker.claude_agent.LoopSession`: Claude Agent SDK hooks that build the ledger row
-  from what the harness saw (steps, errors, repeated actions, first tool), record it at `Stop`,
-  and gate the finished run. Never returns `permissionDecision: "deny"` on the engine's say-so.
-- New `hunter_seeker.langchain_middleware.LoopMiddleware`: the DISPATCH gate as `before_agent`
-  (`jump_to: "end"` on intercept), `after_agent` records.
+  `Ledger.append` refuses a timestamp that is not ISO-8601 or epoch seconds/millis, rather than
+  give a run priors that could disagree with the engine's.
+- New `hunter_seeker.claude_agent.LoopSession` (`hunter-seeker[claude-agent]`): Claude Agent SDK
+  hooks (`PreToolUse`, `PostToolUseFailure`, `Stop`) that build the ledger row from what the
+  harness saw, record it at `Stop`, and gate the finished run off the event loop. Never returns
+  `permissionDecision: "deny"` on the engine's say-so.
+- New `hunter_seeker.langchain_middleware.LoopMiddleware` (`hunter-seeker[langchain-middleware]`,
+  langchain >= 1.0): the DISPATCH gate as `before_agent` — on intercept the model never runs — and
+  every run recorded exactly once. Tested inside a real `create_agent`.
+- CI and the publish workflow install one `test` extra, which includes the real frameworks, so a
+  release runs the adapter tests CI runs.
 - `should_act(entity, run=envelope)` checks the RUN's `usability` before the row and raises
   `MissingSafeguard` when the run is not actionable; `usability_of` and `run_is_actionable` are
   exported.

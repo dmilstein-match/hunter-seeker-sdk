@@ -33,11 +33,16 @@ own five small components. Together they are the loop.
    `Authorization` header returns an `hsk_test_…` key immediately (`hs signup` does this for
    you). It runs the free sample datasets only (`sample:agent_traces` is the one shaped like
    your problem), touches no quota, and is safe to print in a log. Your agent can mint this
-   itself and exercise §2–§6 end to end before a human is involved.
+   itself and exercise §2–§4 on the samples before a human is involved; §5–§6 write to the
+   ledger, which a test key cannot (`403 scope_required`).
 2. **Claim it.** The register response carries a `claim_url`. A human opens it, signs in,
-   and the **same key** now runs against a workspace they own — every `model_ref` and
-   reported outcome from the dry run is preserved.
-3. **Machine vs human principal.** A machine key (`Authorization: Bearer hsk_…`) is for a
+   and the **same key** now runs against a workspace they own — every `model_ref` from the
+   dry run is preserved. It is still a test key: samples only, read-only against the ledger.
+3. **Issue the loop's live key.** A workspace admin issues one on any agent's **Scores & API**
+   page; it is shown once. Tick **Can report outcomes** — that is the `write:outcomes` scope
+   §5 and §6 need. A key without it is read-only against the ledger (`hs_report_outcome`
+   answers `403 scope_required`), which is the right key for a gate that only scores.
+4. **Machine vs human principal.** A machine key (`Authorization: Bearer hsk_…`) is for a
    loop with no human present. It never carries a human principal, so an `act` about a
    *person* tops out at `max_autonomy` L0 regardless of claiming. Agent runs are
    `subject_kind: "event"`, and that cap is keyed on `subject_kind: "person"` — but if your
@@ -58,7 +63,7 @@ One row per agent run, append-only. This is the whole data contract:
 | column | type | who writes it | note |
 |---|---|---|---|
 | `run_id` | string | runtime, at start | unique per run, not per agent |
-| `ts` | ISO-8601 | runtime, at start | one parser, one format chain; a `ts` the engine can't parse gives that run **NULL** priors and is counted in `reading.report.group_null_rows` |
+| `ts` | ISO-8601 | runtime, at start | one parser, one format chain; a `ts` the engine can't parse gives that run **NULL** priors and is counted in `reading.report.group_null_rows`. `Ledger.append` refuses anything but ISO-8601 or epoch seconds/millis, so the priors you compute cannot silently disagree with the engine's |
 | `agent` | string | runtime | model + config fingerprint, e.g. `claude-opus-5/tools-v3` |
 | `task` | string | runtime | task family, not the prompt: `triage`, `pr-review`, `browse-and-extract` |
 | `tool` | string | runtime | primary tool or integration |
@@ -303,7 +308,7 @@ which did not move in any configuration measured.
 2. Score one synthetic row with and without the priors. Watch the 422. Now your gate
    code knows what it has to compute.
 3. Start writing the ledger from your real runtime today. Do nothing else for a month.
-4. At 3,000 rows with known outcomes, claim the key, fit for real, and turn on the gate
+4. At 3,000 rows with known outcomes, issue a live key with outcome reporting (§0.3), fit for real, and turn on the gate
    with the control arm from the first request. Report every outcome.
 5. First `hs_action_evidence` at ~200 acted rows. First lever change after that, not before.
 

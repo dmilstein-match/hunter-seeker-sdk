@@ -1,8 +1,7 @@
-"""Claude Agent SDK hooks for the governed loop. `pip install claude-agent-sdk` (optional).
+"""Claude Agent SDK hooks for the governed loop. `pip install "hunter-seeker[claude-agent]"`.
 
     from claude_agent_sdk import query, ClaudeAgentOptions
-    from hunter_seeker import Client
-    from hunter_seeker.loop import Ledger
+    from hunter_seeker import Client, Ledger
     from hunter_seeker.claude_agent import LoopSession
 
     session = LoopSession(hs, ledger, run_id=run_id, agent="claude-opus-5/tools-v3", task="pr-review",
@@ -13,7 +12,7 @@
     ledger.observe(run_id, failed)
     hs.report_outcome(model_ref, [{"entity_id": run_id, "outcome": failed, "observed_at": ..., "event_id": f"{run_id}:outcome"}])
 
-One `LoopSession` per agent run. It listens to four hook events — `PreToolUse`, `PostToolUse`,
+One `LoopSession` per agent run. It listens to three hook events — `PreToolUse`,
 `PostToolUseFailure`, `Stop` — and does three things:
 
   1. ACCUMULATES the run's telemetry (steps, errors, repeated actions, first tool) from the events
@@ -22,11 +21,11 @@ One `LoopSession` per agent run. It listens to four hook events — `PreToolUse`
      them (`session.tokens_in = ...`) before `Stop` fires, or leave them None.
   2. RECORDS the run in the ledger at `Stop`, with the outcome unknown (None). The outcome is
      yours to observe later; nothing here infers it from the transcript.
-  3. GATES at `Stop` when a `model_ref` is given: computes the six priors from the ledger, scores
-     the finished run, and hands the `Decision` to `on_decision`. The hook itself returns `{}` —
-     at `Stop` the run is already over, so "intercept" means *do not auto-approve its result*,
-     and what that means (hold the PR, route to review, re-run on a stronger model) is the
-     harness's policy, not this module's.
+  3. GATES at `Stop` when a `model_ref` is given: computes the priors from the ledger, scores the
+     finished run (off the event loop), and hands the `Decision` to `on_decision`. The hook itself
+     returns `{}` — at `Stop` the run is already over, so "intercept" means *do not auto-approve
+     its result*, and what that means (hold the PR, route to review, re-run on a stronger model)
+     is the harness's policy, not this module's.
 
 Two things it does NOT do, on purpose:
 
@@ -41,32 +40,30 @@ Two things it does NOT do, on purpose:
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from .loop import Decision, Ledger, gate
-from .safeguards import Autonomy
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class LoopSession:
+    """`gate_kwargs` (subject_kind, needs, control_fraction, salt, acknowledge_decision_support)
+    go to `hunter_seeker.loop.gate` unchanged."""
+
     def __init__(self, hs: Any, ledger: Ledger, *, run_id: str, agent: str, task: str,
                  tool: Optional[str] = None, ts: Optional[str] = None,
-                 model_ref: Optional[str] = None, subject_kind: str = "event",
-                 needs: Autonomy = Autonomy.L3, control_fraction: float = 0.15, salt: str = "",
+                 model_ref: Optional[str] = None,
                  on_decision: Optional[Callable[[Decision], Any]] = None,
-                 extra: Optional[Mapping[str, Any]] = None) -> None:
+                 extra: Optional[Mapping[str, Any]] = None, **gate_kwargs: Any) -> None:
         self.hs, self.ledger = hs, ledger
         self.run_id, self.agent, self.task = str(run_id), agent, task
         self.tool = tool                      # None → the first tool the run calls
-        self.ts = ts or _now()
-        self.model_ref, self.subject_kind, self.needs = model_ref, subject_kind, needs
-        self.control_fraction, self.salt, self.on_decision = control_fraction, salt, on_decision
+        self.started = datetime.now(timezone.utc)
+        self.ts = ts or self.started.isoformat().replace("+00:00", "Z")
+        self.model_ref, self.on_decision, self.gate_kwargs = model_ref, on_decision, gate_kwargs
         self.extra: Dict[str, Any] = dict(extra or {})
         # telemetry — from the hooks, never from the transcript
         self.steps = 0
@@ -75,7 +72,6 @@ class LoopSession:
         self.tokens_in: Optional[int] = None
         self.tokens_out: Optional[int] = None
         self.hit_cap: Optional[int] = None
-        self.started = datetime.now(timezone.utc)
         self.elapsed_ms: Optional[int] = None
         self._seen: set = set()
         self.decision: Optional[Decision] = None
@@ -111,9 +107,6 @@ class LoopSession:
         self._seen.add(key)
         return {}
 
-    async def post_tool(self, input_data: Mapping[str, Any], tool_use_id: Any = None, context: Any = None) -> Dict[str, Any]:
-        return {}
-
     async def post_tool_failure(self, input_data: Mapping[str, Any], tool_use_id: Any = None, context: Any = None) -> Dict[str, Any]:
         self.errors += 1
         return {}
@@ -124,8 +117,9 @@ class LoopSession:
         self.elapsed_ms = int((datetime.now(timezone.utc) - self.started).total_seconds() * 1000)
         row = self.row()
         if self.model_ref:
-            self.decision = gate(self.hs, self.model_ref, self.ledger, row, subject_kind=self.subject_kind,
-                                 needs=self.needs, control_fraction=self.control_fraction, salt=self.salt)
+            # The client is synchronous HTTP; run it off the event loop so the harness keeps moving.
+            self.decision = await asyncio.to_thread(gate, self.hs, self.model_ref, self.ledger, row,
+                                                    **self.gate_kwargs)
         self.ledger.append(row)
         self.recorded = True
         if self.decision is not None and self.on_decision is not None:
@@ -138,12 +132,10 @@ class LoopSession:
         try:
             from claude_agent_sdk import HookMatcher  # type: ignore
         except ImportError as e:  # pragma: no cover - exercised only without the SDK installed
-            raise ImportError("hunter_seeker.claude_agent.LoopSession.hooks() needs `pip install "
-                              "claude-agent-sdk`; or wire the four coroutines yourself: pre_tool, "
-                              "post_tool, post_tool_failure, stop") from e
+            raise ImportError('LoopSession.hooks() needs claude-agent-sdk: pip install "hunter-seeker[claude-agent]"; '
+                              "or wire the three coroutines yourself: pre_tool, post_tool_failure, stop") from e
         return {
             "PreToolUse": [HookMatcher(hooks=[self.pre_tool])],
-            "PostToolUse": [HookMatcher(hooks=[self.post_tool])],
             "PostToolUseFailure": [HookMatcher(hooks=[self.post_tool_failure])],
             "Stop": [HookMatcher(hooks=[self.stop])],
         }

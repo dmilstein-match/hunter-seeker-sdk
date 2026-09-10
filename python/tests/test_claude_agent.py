@@ -1,28 +1,16 @@
-"""hunter_seeker.claude_agent.LoopSession — the four hook coroutines, driven directly.
-
-No claude-agent-sdk needed: the coroutines take the SDK's (input_data, tool_use_id, context) and
-return the SDK's output dict, and that contract is what is tested. `hooks()` is the only thing
-that needs the package, and it is exercised in test_framework_adapters style only when present.
+"""hunter_seeker.claude_agent.LoopSession — the hook coroutines, driven directly, plus `hooks()`
+against the real claude-agent-sdk when it is installed (it is, in CI, via the `test` extra).
 """
 from __future__ import annotations
 
 import asyncio
+import typing
+
+import pytest
+from conftest import MODEL_REF, FakeScoringClient
 
 from hunter_seeker.claude_agent import LoopSession
 from hunter_seeker.loop import Ledger
-
-ACT_L3 = {"entity_id": "r1", "score": 0.53, "band": "act", "band_reason": "certified", "max_autonomy": "L3"}
-ADVERSE = {"outcome": {"column": "failed", "polarity": "adverse"}}
-
-
-class _FakeClient:
-    def __init__(self):
-        self.calls = []
-
-    def score_entity(self, model_ref, row, *, subject_kind, entity_id=None, acknowledge_decision_support=False):
-        self.calls.append(dict(row))
-        return {"entity": dict(ACT_L3), "verdict": dict(ADVERSE),
-                "signature": {"kid": "test", "protected": "x", "signature": "y"}}
 
 
 def _drive(session: LoopSession, events):
@@ -34,14 +22,12 @@ def _drive(session: LoopSession, events):
 
 def test_telemetry_comes_from_the_hooks_not_the_transcript():
     ledger = Ledger()
-    s = LoopSession(_FakeClient(), ledger, run_id="r1", agent="a", task="t")
+    s = LoopSession(FakeScoringClient(), ledger, run_id="r1", agent="a", task="t")
     _drive(s, [
         ("pre_tool", {"tool_name": "Bash", "tool_input": {"command": "pytest"}}),
-        ("post_tool", {"tool_name": "Bash"}),
         ("pre_tool", {"tool_name": "Edit", "tool_input": {"file": "x.py"}}),
         ("post_tool_failure", {"tool_name": "Edit", "error": "boom"}),
         ("pre_tool", {"tool_name": "Bash", "tool_input": {"command": "pytest"}}),   # the same action again
-        ("post_tool", {"tool_name": "Bash"}),
         ("stop", {"stop_reason": "end_turn"}),
     ])
     row = ledger.rows[0]
@@ -53,7 +39,7 @@ def test_telemetry_comes_from_the_hooks_not_the_transcript():
 
 def test_stop_records_once_even_when_it_fires_twice():
     ledger = Ledger()
-    s = LoopSession(_FakeClient(), ledger, run_id="r1", agent="a", task="t")
+    s = LoopSession(FakeScoringClient(), ledger, run_id="r1", agent="a", task="t")
     _drive(s, [("stop", {}), ("stop", {})])
     assert len(ledger.rows) == 1
 
@@ -61,10 +47,10 @@ def test_stop_records_once_even_when_it_fires_twice():
 def test_stop_gates_with_priors_and_hands_the_decision_to_your_policy():
     ledger = Ledger()
     ledger.append({"run_id": "r0", "ts": "2026-01-01T00:00:00Z", "agent": "a", "task": "t", "tool": "Bash", "failed": 1})
-    hs = _FakeClient()
+    hs = FakeScoringClient()
     seen = []
     s = LoopSession(hs, ledger, run_id="r1", agent="a", task="t", ts="2026-01-02T00:00:00Z",
-                    model_ref="mr1_" + "0" * 32, on_decision=seen.append, control_fraction=0.0)
+                    model_ref=MODEL_REF, on_decision=seen.append, control_fraction=0.0)
     _drive(s, [("pre_tool", {"tool_name": "Bash", "tool_input": {}}), ("stop", {})])
     sent = hs.calls[0]
     assert sent["agent_prior_n"] == 1 and sent["agent_prior_outcome_rate"] == 1.0
@@ -75,7 +61,7 @@ def test_stop_gates_with_priors_and_hands_the_decision_to_your_policy():
 
 def test_no_model_ref_means_record_only():
     ledger = Ledger()
-    hs = _FakeClient()
+    hs = FakeScoringClient()
     s = LoopSession(hs, ledger, run_id="r1", agent="a", task="t")
     _drive(s, [("stop", {})])
     assert hs.calls == [] and s.decision is None and len(ledger.rows) == 1
@@ -83,7 +69,7 @@ def test_no_model_ref_means_record_only():
 
 def test_hook_outputs_never_block_on_the_engine_s_say_so():
     # control_fraction=0 so the run cannot land in the control arm ("r1" does, at the default 15%)
-    s = LoopSession(_FakeClient(), Ledger(), run_id="r1", agent="a", task="t", model_ref="mr1_" + "0" * 32,
+    s = LoopSession(FakeScoringClient(), Ledger(), run_id="r1", agent="a", task="t", model_ref=MODEL_REF,
                     control_fraction=0.0)
     outs = []
 
@@ -97,7 +83,19 @@ def test_hook_outputs_never_block_on_the_engine_s_say_so():
 
 def test_group_columns_follow_the_ledger_binding():
     ledger = Ledger(groups={"agent": "model_cfg", "task": "task_family"})
-    s = LoopSession(_FakeClient(), ledger, run_id="r1", agent="a", task="t")
+    s = LoopSession(FakeScoringClient(), ledger, run_id="r1", agent="a", task="t")
     _drive(s, [("stop", {})])
     row = ledger.rows[0]
     assert row["model_cfg"] == "a" and row["task_family"] == "t" and "agent" not in row
+
+
+def test_hooks_are_real_claude_agent_sdk_events():
+    """A renamed or misspelled event is silently never called, so check the names against the SDK."""
+    sdk = pytest.importorskip("claude_agent_sdk")
+    from claude_agent_sdk.types import HookEvent
+    s = LoopSession(FakeScoringClient(), Ledger(), run_id="r1", agent="a", task="t")
+    # HookEvent is a Union of one-value Literals, so the names sit two levels down.
+    events = {name for lit in typing.get_args(HookEvent) for name in (typing.get_args(lit) or (lit,))}
+    hooks = s.hooks()
+    assert set(hooks) <= events, set(hooks) - events
+    assert all(isinstance(m, sdk.HookMatcher) for matchers in hooks.values() for m in matchers)

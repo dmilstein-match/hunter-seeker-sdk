@@ -23,11 +23,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      # pydantic is what the crewai adapter builds its tool models from. Installed here so the
-      # adapter parity tests actually RUN — a test that only ever skips is the same as no test,
-      # which is precisely the state those adapters shipped in.
-      - run: pip install pytest pydantic hs-verify || pip install pytest pydantic cryptography
-      - run: cd python && PYTHONPATH=. python -m pytest -q
+      # The `test` extra (python/pyproject.toml) is the ONE install list, shared with the publish
+      # workflow. It carries pydantic (the crewai adapter's tool models) and the real langchain and
+      # claude-agent-sdk, so the adapter tests drive the actual frameworks — a test that only ever
+      # skips is the same as no test, and a stubbed framework once passed a middleware that did
+      # nothing inside the real one.
+      - run: pip install -e "./python[test]"
+      - run: cd python && python -m pytest -q
   n8n:
     # The community node is the ONLY Hunter-Seeker surface a workflow builder can reach without
     # writing code, so a gap in it is a gap in the product. It shipped covering five of fifteen

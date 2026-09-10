@@ -1,14 +1,11 @@
 # hunter-seeker-sdk
 
-> **Status: live.** `hunter-seeker` 2.1.2 and `hs-verify` 0.2.0 are on PyPI, `@hunter-seeker/verify`
-> 0.2.0 is on npm, the remote MCP server at `https://hunter-seeker.io/api/mcp` is serving, and
-> `/.well-known/jwks.json` publishes `kid: 2026-q3` — the key the shared `vectors.json` in
-> hunter-seeker-verify is signed with. Each was checked on 2026-09-10; a pre-release notice sat
-> here saying none of it was true.
->
-> This checkout is **ahead of PyPI** (2.2.0, unreleased): `hs signup`, `should_act(run=...)`, the
-> governed loop (`hunter_seeker.loop`) and the two harness adapters below are not in 2.1.2. Until
-> 2.2.0 is published, install from this repo to use them.
+> **Status: live.** `hunter-seeker` and `hs-verify` are on PyPI, `@hunter-seeker/verify` is on
+> npm, the remote MCP server at `https://hunter-seeker.io/api/mcp` is serving, and
+> `/.well-known/jwks.json` publishes the key the shared `vectors.json` in hunter-seeker-verify is
+> signed with. Version numbers are deliberately not written here: CI's `registry-installs-clean`
+> installs from PyPI and npm and fails when they disagree with this checkout, which a sentence
+> cannot do.
 
 Client libraries, the OpenAPI contract, framework adapters, and Agent Skills for the
 **Hunter-Seeker Verdict layer** — deterministic, signed, refusable decisions for AI agents.
@@ -33,9 +30,9 @@ hs sample                            # ranks sample:saas_churn (free) and verifi
 | You use | Do this |
 |---|---|
 | Claude, Codex, ChatGPT, Cursor, VS Code | add the remote MCP server `https://hunter-seeker.io/api/mcp` — see [docs/install.md](docs/install.md) |
-| LangGraph / LangChain | `pip install hunter-seeker[langchain]` → `from hunter_seeker.langchain import verdict_tools` (the agent calls the engine) or `from hunter_seeker.langchain_middleware import LoopMiddleware` (the harness gates the agent) |
-| Claude Agent SDK | `from hunter_seeker.claude_agent import LoopSession` → `ClaudeAgentOptions(hooks=session.hooks())` |
-| CrewAI | `pip install hunter-seeker[crewai]` or `Agent(mcps=["https://hunter-seeker.io/api/mcp#hs_score_entity"])` |
+| LangGraph / LangChain | `pip install "hunter-seeker[langchain]"` → `from hunter_seeker.langchain import verdict_tools` (the agent calls the engine), or `pip install "hunter-seeker[langchain-middleware]"` → `from hunter_seeker.langchain_middleware import LoopMiddleware` (the harness gates the agent) |
+| Claude Agent SDK | `pip install "hunter-seeker[claude-agent]"` → `from hunter_seeker.claude_agent import LoopSession` → `ClaudeAgentOptions(hooks=session.hooks())` |
+| CrewAI | `pip install "hunter-seeker[crewai]"` or `Agent(mcps=["https://hunter-seeker.io/api/mcp#hs_score_entity"])` |
 | n8n | the **MCP Client Tool** node today; `n8n-nodes-hunter-seeker` (this repo, `n8n/`) once verified |
 | Agentforce, Bedrock AgentCore, Copilot Studio | import `openapi/openapi-agent-actions.json` |
 | anything with HTTP | `openapi/openapi.json` (OpenAPI 3.1) |
@@ -47,7 +44,7 @@ python/     PyPI `hunter-seeker`: client, safeguards, the governed loop over age
             LangChain/LangGraph + CrewAI tools, Claude Agent SDK hooks, LangChain middleware, `hs` CLI
 openapi/    the contract of record, pulled from the product by tool-contract version
 n8n/        n8n-nodes-hunter-seeker (credential, node, example workflow)
-skills/     four Agent Skills (SKILL.md) — also published to the skills repository
+skills/     four Agent Skills (SKILL.md)
 docs/       a worked example of an agentic system built on the Verdict layer; install guides;
             the governed loop over agent runs
 scripts/    pull_spec.sh (pull the published spec by version), check_spec.py (block placeholders)

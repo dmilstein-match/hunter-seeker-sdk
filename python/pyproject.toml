@@ -14,8 +14,14 @@ Documentation = "https://hunter-seeker.io/docs"
 Changelog = "https://github.com/dmilstein-match/hunter-seeker-sdk/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-langchain = ["langchain-core>=0.3"]
+langchain = ["langchain-core>=0.3"]                  # verdict_tools: the engine as an agent's tools
+langchain-middleware = ["langchain>=1.0"]             # LoopMiddleware: the harness gates the agent
+claude-agent = ["claude-agent-sdk>=0.1"]              # LoopSession.hooks()
 crewai = ["crewai>=0.100", "crewai-tools>=0.40"]
+# What CI and the publish workflow install — ONE list, so a release runs the same suite CI does,
+# including the adapter tests that drive the real frameworks (a stubbed framework passed a
+# middleware that did nothing inside the real one).
+test = ["pytest", "pydantic", "langchain>=1.0", "claude-agent-sdk>=0.1"]
 
 [project.scripts]
 hs = "hunter_seeker.cli:main"

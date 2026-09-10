@@ -16,9 +16,10 @@
 
 WHY THIS MODULE EXISTS — three things the engine cannot do for you, each measured:
 
-1.  **The reading does not run at score time.** `trace@1` derives six features during the fit —
-    `agent_prior_n`, `agent_prior_outcome_rate`, and the same pair for `task` and `tool`. A later
-    `hs_score_entity` reads them off the row you send and refuses when one is missing:
+1.  **The reading does not run at score time.** `trace@1` derives two features per bound group
+    role during the fit — `agent_prior_n` and `agent_prior_outcome_rate`, and the same pair for
+    `task` and `tool`. A later `hs_score_entity` reads them off the row you send and refuses when
+    one is missing:
 
         422 row_not_scoreable: scorecard feature 'agent_prior_n' not found in frame columns [...]
 
@@ -30,11 +31,11 @@ WHY THIS MODULE EXISTS — three things the engine cannot do for you, each measu
 
 2.  **Acting on the score destroys the data the score needs.** Once a band causes a reroute you
     stop observing what would have happened, and `hs_action_evidence` — which compares acted
-    against not-acted WITHIN the same pattern — has nothing to compare. `Ledger.control` exempts a
+    against not-acted WITHIN the same pattern — has nothing to compare. `control_arm` exempts a
     fixed slice of runs by a stable hash of the run id, so the slice is the same forever and the
     same on every machine.
 
-3.  **A pattern can bound a monotone counter and never fire again.** Three of the six emits are
+3.  **A pattern can bound a monotone counter and never fire again.** The `_prior_n` emits are
     counts that only grow, so `agent_prior_n > 97` is a date filter wearing a feature's name — the
     sample corpus selected exactly that. `era_lock` rebuilds each condition from `operator` and
     `missing_values` (never the direction word) and grades it in-fit, with no holdout needed.
@@ -44,17 +45,23 @@ permission (`safeguards` raises), or retrain anything (a refit is an explicit `r
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import math
 import re
+from bisect import bisect_left
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from itertools import accumulate
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from .safeguards import Autonomy, Band, band, ceiling, polarity_of
+from .safeguards import Autonomy, Band, band, ceiling, polarity_of, should_act
 
 #: The group roles `trace@1` understands, in the engine's emission order.
 GROUP_ROLES: Tuple[str, ...] = ("agent", "task", "tool")
+
+#: The share of runs held out of every intervention. See `control_arm`.
+DEFAULT_CONTROL_FRACTION = 0.15
 
 
 def prior_feature_names(groups: Iterable[str] = GROUP_ROLES) -> List[str]:
@@ -65,14 +72,19 @@ def prior_feature_names(groups: Iterable[str] = GROUP_ROLES) -> List[str]:
     return out
 
 
+def _missing(v: Any) -> bool:
+    return v is None or (isinstance(v, float) and math.isnan(v))
+
+
 # ── timestamps ──────────────────────────────────────────────────────────────────────────────
 #
 # The engine parses through ONE format chain (duckdb_utils._TIMESTAMP_FORMATS) and compares at
 # microsecond resolution with the session pinned to UTC: an aware value becomes the UTC instant
 # with the offset dropped, a naive value passes through unchanged. This mirrors the ISO and
-# epoch members of that chain and refuses the rest (US/EU/compact dates) rather than guessing —
-# a ledger you write yourself can write ISO. `None` means "unparsable", which is what the engine
-# emits for the run's priors in that case.
+# epoch members of that chain and refuses the rest (US/EU/compact dates) rather than guessing.
+# One difference in kind: the engine decides "epoch" per COLUMN (every value in the band), this
+# decides per value — so `Ledger.append` refuses what it cannot parse, and a ledger you write
+# yourself should write ISO-8601.
 
 _ISO = re.compile(
     r"^(\d{4})-(\d{2})-(\d{2})"
@@ -84,7 +96,7 @@ _EPOCH_MS = (10**11, 10**13)
 
 
 def parse_ts(value: Any) -> Optional[datetime]:
-    """A naive-UTC datetime at microsecond resolution, or None when the engine would not parse it."""
+    """A naive-UTC datetime at microsecond resolution, or None when this cannot parse it."""
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -141,10 +153,10 @@ def _binary_or_none(value: Any, where: str) -> Optional[int]:
 class Ledger:
     """One row per agent run. The only state the loop needs you to own.
 
-    Rows are plain dicts. The outcome column may be None while the run is in flight; only rows
-    with a KNOWN outcome contribute to another run's priors, because that is what the fit saw —
-    the engine fits on a fully labelled table, and the decision-time equivalent is "the earlier
-    runs whose outcome I know".
+    Rows are plain dicts: read `rows`, write through `append`/`extend`/`observe`. The outcome
+    column may be None while the run is in flight; only rows with a KNOWN outcome contribute to
+    another run's priors, because that is what the fit saw — the engine fits on a fully labelled
+    table, and the decision-time equivalent is "the earlier runs whose outcome I know".
     """
 
     def __init__(self, *, identifier: str = "run_id", time_axis: str = "ts",
@@ -161,15 +173,35 @@ class Ledger:
         if not self.groups:
             raise ValueError("bind at least one group role (agent, task, tool): a prior rate is a rate OVER something")
         self.rows: List[Dict[str, Any]] = []
+        # Timestamps are parsed once, at append. A prior reads a per-group table of sorted times and
+        # running outcome sums, rebuilt lazily after a write, so it is one bisect rather than a
+        # re-parse of the whole ledger (3,000 rows took 38 s that way).
+        self._times: List[datetime] = []
+        self._by_group: Dict[Tuple[str, str], List[int]] = {}
+        self._by_id: Dict[str, List[int]] = {}
+        self._tables: Dict[Tuple[str, str], Tuple[List[datetime], List[int]]] = {}
 
     # -- writing -------------------------------------------------------------------------------
     def append(self, row: Mapping[str, Any]) -> None:
         for col in (self.identifier, self.time_axis):
             if col not in row:
                 raise ValueError(f"row is missing the {col!r} column")
+        t = parse_ts(row[self.time_axis])
+        if t is None:
+            raise ValueError(
+                f"run {row[self.identifier]!r}: {self.time_axis}={row[self.time_axis]!r} is not ISO-8601 "
+                "or epoch seconds/millis. The ledger refuses it rather than give this run priors that "
+                "may disagree with the engine's, which parses more formats. Write ISO-8601.")
         r = dict(row)
         r[self.outcome] = _binary_or_none(r.get(self.outcome), f"run {r[self.identifier]!r}")
+        i = len(self.rows)
         self.rows.append(r)
+        self._times.append(t)
+        self._by_id.setdefault(str(r[self.identifier]), []).append(i)
+        for col in self.groups.values():
+            if r.get(col) is not None:
+                self._by_group.setdefault((col, str(r[col])), []).append(i)
+        self._tables.clear()
 
     def extend(self, rows: Iterable[Mapping[str, Any]]) -> None:
         for r in rows:
@@ -177,57 +209,59 @@ class Ledger:
 
     def observe(self, run_id: str, outcome: Any) -> None:
         """Fill in the observed outcome for a run already in the ledger."""
-        for r in self.rows:
-            if str(r[self.identifier]) == str(run_id):
-                r[self.outcome] = _binary_or_none(outcome, f"run {run_id!r}")
-                return
-        raise KeyError(f"run {run_id!r} is not in the ledger")
+        idx = self._by_id.get(str(run_id))
+        if not idx:
+            raise KeyError(f"run {run_id!r} is not in the ledger")
+        self.rows[idx[0]][self.outcome] = _binary_or_none(outcome, f"run {run_id!r}")
+        self._tables.clear()
 
     # -- priors --------------------------------------------------------------------------------
     def priors(self, row: Mapping[str, Any]) -> Dict[str, Optional[float]]:
-        """The six `trace@1` features for `row`, computed over this ledger's labelled rows.
+        """The `trace@1` features for `row` — two per bound role — over this ledger's labelled rows.
 
         `row` need not be in the ledger. Its own timestamp and group values decide the windows;
         rows of the ledger that share its identifier are excluded so scoring a run already
         recorded does not let it see its own label.
         """
         t = parse_ts(row.get(self.time_axis))
-        out: Dict[str, Optional[float]] = {}
         own_id = str(row.get(self.identifier))
+        out: Dict[str, Optional[float]] = {}
         for role, col in self.groups.items():
-            n_name, rate_name = f"{role}_prior_n", f"{role}_prior_outcome_rate"
+            n_name, rate_name = prior_feature_names([role])
             value = row.get(col)
             if t is None or value is None:
-                out[n_name] = None
-                out[rate_name] = None
+                out[n_name] = out[rate_name] = None
                 continue
             key = str(value)
-            n, total = 0, 0
-            for r in self.rows:
-                if r.get(self.outcome) is None or r.get(col) is None:
-                    continue
-                if str(r.get(self.identifier)) == own_id:
-                    continue
-                if str(r[col]) != key:
-                    continue
-                rt = parse_ts(r.get(self.time_axis))
-                if rt is None or not (rt < t):          # strictly earlier; a tie is not earlier
-                    continue
-                n += 1
-                total += int(r[self.outcome])
+            times, sums = self._table((col, key))
+            n = bisect_left(times, t)                          # strictly earlier; a tie is not earlier
+            total = sums[n]
+            for i in self._by_id.get(own_id, ()):              # a run never sees its own label
+                r = self.rows[i]
+                if (r.get(col) is not None and str(r[col]) == key and r[self.outcome] is not None
+                        and self._times[i] < t):
+                    n -= 1
+                    total -= r[self.outcome]
             out[n_name] = float(n)
             out[rate_name] = (total / n) if n else None
         return out
 
+    def _table(self, key: Tuple[str, str]) -> Tuple[List[datetime], List[int]]:
+        """(sorted times, running outcome sums) over one group's LABELLED rows; cached until a write."""
+        table = self._tables.get(key)
+        if table is None:
+            idx = sorted((i for i in self._by_group.get(key, ()) if self.rows[i][self.outcome] is not None),
+                         key=self._times.__getitem__)
+            table = ([self._times[i] for i in idx],
+                     list(accumulate((self.rows[i][self.outcome] for i in idx), initial=0)))
+            self._tables[key] = table
+        return table
+
     def with_priors(self, row: Mapping[str, Any]) -> Dict[str, Any]:
         return {**row, **self.priors(row)}
 
-    # -- the control arm -----------------------------------------------------------------------
-    def control(self, run_id: Any, *, fraction: float = 0.15, salt: str = "") -> bool:
-        return control_arm(run_id, fraction=fraction, salt=salt)
 
-
-def control_arm(run_id: Any, *, fraction: float = 0.15, salt: str = "") -> bool:
+def control_arm(run_id: Any, *, fraction: float = DEFAULT_CONTROL_FRACTION, salt: str = "") -> bool:
     """True for a fixed `fraction` of run ids, by stable hash. Same answer forever, everywhere.
 
     Not `random()`: a control arm that is re-drawn each call is not a control arm, and one drawn
@@ -269,25 +303,23 @@ def decide(entity: Mapping[str, Any], verdict: Mapping[str, Any], *, run_id: Any
     "default": your baseline policy, never attributed to the engine. Raises `MissingSafeguard`
     rather than defaulting when band, ceiling or polarity is absent.
     """
-    b = band(entity)
-    c = ceiling(entity)
-    pol = polarity_of(verdict)
-    base = dict(run_id=str(run_id), band=b.value, autonomy=c.value, polarity=pol, control=control,
-                entity=dict(entity), verdict=dict(verdict))
+    b, c, pol = band(entity), ceiling(entity), polarity_of(verdict)
     if control:
-        return Decision(action="default", reason="control arm: recorded, not acted on", **base)
-    if b is not Band.ACT:
-        return Decision(action="default", reason=f"band {b.value}", **base)
-    if not c.permits(needs):
-        return Decision(action="default", reason=f"ceiling {c.value} below {needs.value}", **base)
-    if pol == "adverse":
-        return Decision(action="intercept", reason="certified likely to hit an adverse outcome", **base)
-    return Decision(action="proceed", reason="certified likely to hit a desirable outcome", **base)
+        action, reason = "default", "control arm: recorded, not acted on"
+    elif not should_act(entity, needs=needs):
+        action = "default"
+        reason = f"band {b.value}" if b is not Band.ACT else f"ceiling {c.value} below {needs.value}"
+    elif pol == "adverse":
+        action, reason = "intercept", "certified likely to hit an adverse outcome"
+    else:
+        action, reason = "proceed", "certified likely to hit a desirable outcome"
+    return Decision(run_id=str(run_id), action=action, reason=reason, band=b.value, autonomy=c.value,
+                    polarity=pol, control=control, entity=dict(entity), verdict=dict(verdict))
 
 
 def gate(hs: Any, model_ref: str, ledger: Ledger, row: Mapping[str, Any], *,
          subject_kind: str = "event", needs: Autonomy = Autonomy.L3,
-         control_fraction: float = 0.15, salt: str = "",
+         control_fraction: float = DEFAULT_CONTROL_FRACTION, salt: str = "",
          acknowledge_decision_support: bool = False) -> Decision:
     """Score one run through `hs.score_entity` with its priors attached, and decide.
 
@@ -297,14 +329,11 @@ def gate(hs: Any, model_ref: str, ledger: Ledger, row: Mapping[str, Any], *,
     """
     run_id = row.get(ledger.identifier)
     scored_row = ledger.with_priors(row)
-    is_control = ledger.control(run_id, fraction=control_fraction, salt=salt)
     resp = hs.score_entity(model_ref, scored_row, subject_kind=subject_kind, entity_id=str(run_id),
                            acknowledge_decision_support=acknowledge_decision_support)
-    entity = resp.get("entity") or {}
-    verdict = resp.get("verdict") or {}
-    d = decide(entity, verdict, run_id=run_id, control=is_control, needs=needs)
-    return Decision(**{**d.__dict__, "signature": dict(resp.get("signature") or {}),
-                       "row_scored": scored_row})
+    d = decide(resp.get("entity") or {}, resp.get("verdict") or {}, run_id=run_id,
+               control=control_arm(run_id, fraction=control_fraction, salt=salt), needs=needs)
+    return dataclasses.replace(d, signature=dict(resp.get("signature") or {}), row_scored=scored_row)
 
 
 # ── era-lock ─────────────────────────────────────────────────────────────────────────────────
@@ -323,7 +352,7 @@ def _fires(cond: Mapping[str, Any], row: Mapping[str, Any]) -> bool:
     if cond.get("categories") is not None:
         inside = v is not None and str(v) in {str(c) for c in cond["categories"]}
         return inside if cond.get("category_match", "is_one_of") == "is_one_of" else not inside
-    if v is None or (isinstance(v, float) and math.isnan(v)):
+    if _missing(v):
         return cond.get("missing_values") == "included"
     op, t = cond["operator"], float(cond["threshold"])
     x = float(v)
@@ -370,13 +399,12 @@ def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str
     firing rate across time bins inside the window, and the rank correlation of the raw feature
     against time — a feature that IS a clock is CLOCK-LIKE whatever it is called.
     """
-    timed = [(parse_ts(r.get(time_axis)), r) for r in rows]
-    timed = [(t, r) for t, r in timed if t is not None]
-    timed.sort(key=lambda tr: tr[0])
+    timed = sorted(((t, r) for t, r in ((parse_ts(r.get(time_axis)), r) for r in rows) if t is not None),
+                   key=lambda tr: tr[0])
     cut = parse_ts(cutoff) if cutoff is not None else None
-    fit = [r for t, r in timed if cut is None or t < cut]
+    fit_timed = [(t, r) for t, r in timed if cut is None or t < cut]
+    fit = [r for _, r in fit_timed]
     hold = [r for t, r in timed if cut is not None and t >= cut]
-    fit_t = [t for t, r in timed if cut is None or t < cut]
 
     results, verdicts = [], []
     for c in conditions:
@@ -387,21 +415,15 @@ def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str
         nb = max(1, min(bins, len(fit)))
         per_bin: List[float] = []
         for b in range(nb):
-            lo, hi = (b * len(fit)) // nb, ((b + 1) * len(fit)) // nb
-            chunk = m_fit[lo:hi]
+            chunk = m_fit[(b * len(fit)) // nb:((b + 1) * len(fit)) // nb]
             per_bin.append((sum(chunk) / len(chunk)) if chunk else 0.0)
         declining = len(per_bin) >= 3 and per_bin[0] > 0 and per_bin[-1] <= FORWARD_COLLAPSE * per_bin[0]
 
         rho = None
         if c.get("categories") is None:
-            xs, ys = [], []
-            for t, r in zip(fit_t, fit):
-                v = r.get(c["feature"])
-                if v is None or (isinstance(v, float) and math.isnan(v)):
-                    continue
-                xs.append(t.timestamp())
-                ys.append(float(v))
-            rho = _spearman(xs, ys)
+            pairs = [(t.timestamp(), float(r[c["feature"]])) for t, r in fit_timed
+                     if not _missing(r.get(c["feature"]))]
+            rho = _spearman([p[0] for p in pairs], [p[1] for p in pairs])
 
         if rate_hold is not None and rate_hold < NEAR_ZERO:
             v = "DEAD"
@@ -436,5 +458,5 @@ def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str
     }
 
 
-__all__ = ["GROUP_ROLES", "prior_feature_names", "parse_ts", "Ledger", "control_arm",
-           "Decision", "decide", "gate", "era_lock"]
+__all__ = ["GROUP_ROLES", "DEFAULT_CONTROL_FRACTION", "prior_feature_names", "parse_ts", "Ledger",
+           "control_arm", "Decision", "decide", "gate", "era_lock"]

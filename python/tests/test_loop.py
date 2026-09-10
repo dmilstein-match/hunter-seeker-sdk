@@ -1,11 +1,11 @@
 """hunter_seeker.loop — the ledger, the priors, the control arm, the gate, and era-lock.
 
 The priors are pinned to `fixtures/trace_priors_golden.json`, which the ENGINE generated
-(`worker/src/readings/trace.py`, engine 0.3.6) over the rows it contains. Before it was
-adopted, the fixture was checked against five deliberate wrong implementations; it catches a
-tie counted as earlier (11 mismatches), a zero-filled rate (8) and second-resolution
-timestamps (5). It cannot see two others, so they have their own tests below: an unlabelled
-row counting toward `_n`, and a run's own row seeing its own label.
+(`worker/src/readings/trace.py`, engine 0.3.6) over the rows it contains. The fixture was
+checked against deliberate wrong implementations; it catches a tie counted as earlier
+(11 mismatches), a zero-filled rate (8) and second-resolution timestamps (5). It cannot see two
+others, so they have their own tests below: an unlabelled row counting toward `_n`, and a run's
+own row seeing its own label.
 """
 from __future__ import annotations
 
@@ -15,12 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from conftest import ACT_L2, ACT_L3, ADVERSE, DESIRABLE, ESCALATE, MODEL_REF, REFUSE, FakeScoringClient
 
 from hunter_seeker import Autonomy, MissingSafeguard
 from hunter_seeker.loop import (Decision, Ledger, control_arm, decide, era_lock, gate, parse_ts,
                                 prior_feature_names)
 
 GOLDEN = json.loads((Path(__file__).parent / "fixtures" / "trace_priors_golden.json").read_text())
+PARSABLE = [r for r in GOLDEN["rows"] if parse_ts(r["ts"]) is not None]   # the ledger refuses the rest
 
 
 def _same(a, b) -> bool:
@@ -29,11 +31,18 @@ def _same(a, b) -> bool:
     return math.isclose(a, b)
 
 
+def _golden_ledger() -> Ledger:
+    ledger = Ledger()
+    ledger.extend(PARSABLE)
+    return ledger
+
+
 # ── priors ─────────────────────────────────────────────────────────────────────────────────
 
 def test_priors_match_the_engine_on_every_row_and_feature():
-    ledger = Ledger()
-    ledger.extend(GOLDEN["rows"])
+    """Every row, the unparsable one included: the engine excludes it from everyone's windows and
+    gives it NULL, which is exactly what leaving it out of the ledger and scoring it produces."""
+    ledger = _golden_ledger()
     mismatches = []
     for row, expected in zip(GOLDEN["rows"], GOLDEN["expected"]):
         got = ledger.priors(row)
@@ -59,6 +68,13 @@ def test_the_fixture_exercises_the_cases_that_matter():
     # a missing group value gives NULL for that group only
     null_agent = next(r["run_id"] for r in GOLDEN["rows"] if r["agent"] is None and r["run_id"] != "r020")
     assert exp[null_agent]["agent_prior_n"] is None and exp[null_agent]["task_prior_n"] is not None
+
+
+def test_the_ledger_refuses_a_timestamp_it_cannot_parse():
+    """The engine parses more formats than this does, so a silently-NULL prior here could differ
+    from the one the engine computed at fit. Refused at the boundary instead."""
+    with pytest.raises(ValueError, match="ISO-8601"):
+        Ledger().append({"run_id": "a", "ts": "03/04/2026", "agent": "x", "failed": 0})
 
 
 def test_unlabelled_rows_do_not_count_toward_anyone_s_priors():
@@ -91,9 +107,8 @@ def test_first_run_in_a_group_is_zero_and_null_never_zero_and_zero():
 
 
 def test_the_ledger_refuses_a_self_reported_outcome():
-    ledger = Ledger()
     with pytest.raises(ValueError, match="observed outcome"):
-        ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "failed": "done"})
+        Ledger().append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "failed": "done"})
 
 
 def test_group_binding_is_explicit():
@@ -149,18 +164,9 @@ def test_salt_draws_a_different_slice_over_the_same_ids():
 
 # ── decide / gate ──────────────────────────────────────────────────────────────────────────
 
-ACT_L3 = {"entity_id": "r1", "score": 0.53, "band": "act", "band_reason": "certified", "max_autonomy": "L3"}
-ACT_L2 = {**ACT_L3, "max_autonomy": "L2"}
-ESCALATE = {"entity_id": "r1", "score": 0.51, "band": "escalate", "band_reason": "uncertain", "max_autonomy": "L1"}
-REFUSE = {"entity_id": "r1", "score": 0.2, "band": "refuse", "band_reason": "no_vouch", "max_autonomy": "L0"}
-ADVERSE = {"outcome": {"column": "failed", "polarity": "adverse"}}
-DESIRABLE = {"outcome": {"column": "succeeded", "polarity": "desirable"}}
-
-
 def test_the_band_is_read_with_its_polarity():
     """Fitted on `failed`, a certified row is a run to CATCH. Fitted on `succeeded`, to let through.
-    A router that assumes one of these is wrong on the other — the spec that preceded this module
-    had it inverted for its own example."""
+    A router that assumes one of these is wrong on the other."""
     assert decide(ACT_L3, ADVERSE, run_id="r1").action == "intercept"
     assert decide(ACT_L3, DESIRABLE, run_id="r1").action == "proceed"
 
@@ -184,36 +190,23 @@ def test_missing_safeguards_raise_rather_than_default():
         decide(ACT_L3, {"outcome": {"column": "failed"}}, run_id="r1")           # no polarity
 
 
-class _FakeClient:
-    """Records the row it was asked to score and answers with a canned entity + verdict."""
-    def __init__(self, entity, verdict):
-        self.entity, self.verdict, self.calls = entity, verdict, []
-
-    def score_entity(self, model_ref, row, *, subject_kind, entity_id=None, acknowledge_decision_support=False):
-        self.calls.append(dict(row))
-        return {"entity": dict(self.entity), "verdict": dict(self.verdict),
-                "signature": {"kid": "test", "protected": "x", "signature": "y"}, "billable_decisions": 1}
-
-
-def test_gate_attaches_the_six_priors_before_scoring():
-    ledger = Ledger()
-    ledger.extend(GOLDEN["rows"])
-    hs = _FakeClient(ACT_L3, ADVERSE)
+def test_gate_attaches_the_priors_before_scoring():
+    ledger = _golden_ledger()
+    hs = FakeScoringClient(ACT_L3, ADVERSE)
     new_run = {"run_id": "r_new", "ts": "2026-02-01T00:00:00Z", "agent": "a1", "task": "t2", "tool": "shell",
                "input_tokens": 2100}
-    d = gate(hs, "mr1_" + "0" * 32, ledger, new_run, control_fraction=0.0)
+    d = gate(hs, MODEL_REF, ledger, new_run, control_fraction=0.0)
     sent = hs.calls[0]
     assert set(prior_feature_names()) <= set(sent), "the scorecard's arm features must be on the row"
-    assert sent["agent_prior_n"] == sum(1 for r in GOLDEN["rows"] if r["agent"] == "a1" and r["ts"] != "not a time")
+    assert sent["agent_prior_n"] == sum(1 for r in PARSABLE if r["agent"] == "a1")
     assert isinstance(d, Decision) and d.action == "intercept" and d.signature["kid"] == "test"
     assert d.row_scored == sent
 
 
 def test_gate_scores_a_control_run_but_returns_default():
-    ledger = Ledger()
-    hs = _FakeClient(ACT_L3, ADVERSE)
+    hs = FakeScoringClient(ACT_L3, ADVERSE)
     row = {"run_id": "r_ctl", "ts": "2026-02-01T00:00:00Z", "agent": "a1", "task": "t2", "tool": "shell"}
-    d = gate(hs, "mr1_" + "0" * 32, ledger, row, control_fraction=1.0)
+    d = gate(hs, MODEL_REF, Ledger(), row, control_fraction=1.0)
     assert len(hs.calls) == 1                     # the comparison needs its band
     assert d.action == "default" and d.control and d.band == "act"
 
