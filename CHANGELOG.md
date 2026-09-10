@@ -1,6 +1,33 @@
 # Changelog
 
-## 2.1.2 — unreleased
+## 2.2.0 — unreleased
+
+Everything below landed after 2.1.2 was uploaded to PyPI (2026-09-08 18:23 UTC). PyPI versions
+are immutable, so it ships as 2.2.0 — new modules, no breaking change.
+
+- New `hunter_seeker.loop`: the governed loop over agent runs. `Ledger` computes the `trace@1`
+  prior features at decision time — `hs_score_entity` does not run the reading and refuses a row
+  without them (`422 row_not_scoreable: scorecard feature 'agent_prior_n' not found`) — with the
+  reading's exact definition, pinned to `tests/fixtures/trace_priors_golden.json`, which the
+  engine's own `readings/trace.py` generated. `control_arm` holds out a stable hashed slice so
+  `hs_action_evidence` has a comparison. `decide`/`gate` read the band WITH its polarity: on an
+  adverse outcome a certified row is a run to CATCH, on a desirable one a run to let through.
+  `era_lock` grades a pattern's conditions against time, rebuilt from `operator` and
+  `missing_values`, because the `_prior_n` emits are monotone counters and `agent_prior_n > 97`
+  is a date filter wearing a feature's name.
+- New `hunter_seeker.claude_agent.LoopSession`: Claude Agent SDK hooks that build the ledger row
+  from what the harness saw (steps, errors, repeated actions, first tool), record it at `Stop`,
+  and gate the finished run. Never returns `permissionDecision: "deny"` on the engine's say-so.
+- New `hunter_seeker.langchain_middleware.LoopMiddleware`: the DISPATCH gate as `before_agent`
+  (`jump_to: "end"` on intercept), `after_agent` records.
+- `should_act(entity, run=envelope)` checks the RUN's `usability` before the row and raises
+  `MissingSafeguard` when the run is not actionable; `usability_of` and `run_is_actionable` are
+  exported.
+- `hs signup` mints a samples-only key from the command line. The CLI stops losing stored keys,
+  catches an obviously fake key before sending it, and says when `hs.yaml` is tracked by git
+  without touching the user's `.gitignore`.
+
+## 2.1.2 — 2026-09-08
 
 A version bump is REQUIRED here, not cosmetic: the repo's content now differs from what PyPI
 serves as 2.1.1, and a PyPI version is immutable.

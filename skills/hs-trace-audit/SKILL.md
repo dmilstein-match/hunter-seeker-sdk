@@ -9,6 +9,16 @@ An agent trace is an event log. The `sequential@1` reading turns it into one row
 The engine then finds which combination of run features predicts success. No judge; a
 reproducible pattern with lift, coverage, and a signed verdict.
 
+**Two grains, pick on purpose.** `sequential@1` is for SPAN-level logs — it derives per-run
+counts, tenure and transitions from the events. `trace@1` is for a table you already keep at
+ONE ROW PER RUN (run id, timestamp, agent, task, tool, telemetry, observed outcome) — it
+attaches each run's prior outcome rate and prior run count per bound agent / task / tool role,
+over strictly earlier runs. For a closed loop that scores NEW runs at decision time, use
+`trace@1` and the SDK's `hunter_seeker.loop` (`docs/governed-loop.md`): `hs_score_entity` does
+not run the reading, so the prior features have to be computed by the caller, and the loop
+needs a control arm and an era-lock check that the reading cannot supply. The `_prior_n`
+emits are counts that only grow; a pattern that bounds one is a date filter.
+
 ## Roles
 
 | role | OpenTelemetry GenAI field |
