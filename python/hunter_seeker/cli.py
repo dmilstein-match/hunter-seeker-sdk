@@ -91,6 +91,31 @@ def _stored_key() -> str | None:
     return key if isinstance(key, str) else None
 
 
+def _git_would_track(path: Path = SPEC_PATH) -> bool:
+    """True only when we are inside a git work tree AND git is not already ignoring `path`.
+
+    We never edit the user's `.gitignore`. Writing to a file the caller did not ask us to touch is
+    not ours to do, and a repo can have policy about that file we cannot see. We say the sentence
+    and let them decide.
+
+    Silent — returning False — whenever the answer is not a confident yes: no git on PATH, not a
+    repository, or git errors for any reason. A warning that fires when there is nothing to warn
+    about is the fastest way to teach someone to ignore the next one.
+    """
+    import subprocess
+    try:
+        inside = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
+                                capture_output=True, text=True, timeout=5)
+        if inside.returncode != 0 or inside.stdout.strip() != "true":
+            return False
+        # `check-ignore` exits 0 when the path IS ignored, 1 when it is not.
+        ignored = subprocess.run(["git", "check-ignore", "-q", str(path)],
+                                 capture_output=True, timeout=5)
+        return ignored.returncode == 1
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _key_problem(key: str, source: str) -> str | None:
     """Why this cannot be a Hunter-Seeker key - or None if it is shaped like one.
 
@@ -198,6 +223,21 @@ def _signup(agent_caller: str, force: bool) -> int:
               "register returned no api_key. Nothing was written.",
               "Retry `hs signup`. If it repeats, the registration endpoint is the problem.")
 
+    # The client is STRICTER than the server: it requires the full 57-character shape, while the
+    # server accepts any hsk_live_/hsk_test_ prefix. That is safe today — one code path mints keys
+    # and the format has never moved — but if it ever does, signup would write a key that every
+    # later command refuses LOCALLY, and the tool would sit there contradicting itself. Say so, and
+    # still write it: a key that cannot be used is recoverable, a key that was never saved is not.
+    if not KEY_RE.match(key):
+        print(
+            "\nwarning: the key just minted does not match the shape this client expects "
+            f"(hsk_live_/hsk_test_ plus 48 hex characters). It has been saved to {SPEC_PATH} and "
+            "printed above, but `hs rank` and `hs score` will refuse it locally. This client is "
+            "out of date with the server - upgrade hunter-seeker, or pass the key via HS_API_KEY "
+            "to a newer one.",
+            file=sys.stderr,
+        )
+
     # PRINT BEFORE PERSISTING. The server shows this key exactly once, so anything that can
     # fail must happen after it is on the caller's terminal - a write error here used to
     # leave a minted tenant unreachable forever.
@@ -224,6 +264,24 @@ def _signup(agent_caller: str, force: bool) -> int:
         "claim_url": out.get("claim_url"),
         "next": "hs sample",
     }, indent=2))
+
+    # THE KEY JUST WRITTEN IS A TEST KEY, AND COMMITTING IT IS HARMLESS BY DESIGN — it reaches the
+    # free sample datasets, consumes no quota, and can read nobody's data. Saying "you have leaked a
+    # secret" here would be false, and false warnings are how real ones get ignored.
+    #
+    # What is worth saying is the thing that is true LATER: hs.yaml is where a live key goes too, and
+    # by then the file is already tracked and nobody thinks about it again. This is the only moment
+    # the user is looking at that file.
+    if wrote and _git_would_track():
+        print(
+            f"\nnote: {SPEC_PATH} is inside a git repository and is not ignored.\n"
+            f"      The key just written is a TEST key - committing it is harmless; it reaches the\n"
+            f"      free sample datasets and nothing else. But this file is also where a live key\n"
+            f"      goes, so add it before that happens:\n"
+            f"          echo '{SPEC_PATH}' >> .gitignore\n"
+            f"      (not done for you - your .gitignore is yours)",
+            file=sys.stderr,
+        )
     return 0 if wrote else 1
 
 

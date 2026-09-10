@@ -242,3 +242,20 @@ def test_init_keeps_the_key_signup_just_wrote(tmp_path, monkeypatch, capsys):
     spec = cli._read_spec()
     assert spec["api_key"] == REAL_KEY, "the credential survives a re-init"
     assert "model_ref" not in spec, "but the old model_ref does not — it was fitted on another dataset"
+def test_a_minted_key_this_client_would_refuse_is_flagged_but_still_saved(tmp_path, monkeypatch, capsys):
+    """The client requires the full 57-character shape; the server accepts any hsk_ prefix.
+
+    Safe today - one code path mints keys and the format has never moved - but if it ever does,
+    signup would write a key that every later command refuses LOCALLY, and the tool would sit there
+    contradicting itself with no explanation. It says so, and still saves the key: one that cannot
+    be used is recoverable, one that was never written down is not.
+    """
+    monkeypatch.chdir(tmp_path)
+    odd = 'hsk_test_' + 'ZZ' * 24          # right prefix, wrong body
+    _fake_register(monkeypatch, {'api_key': odd, 'agent_id': 'ag_9', 'mode': 'test'})
+
+    assert cli._signup('hs-cli', force=False) == 0
+    err = capsys.readouterr().err
+    assert odd in err, 'the key still reached the caller'
+    assert cli._read_spec()['api_key'] == odd, 'and was still saved - never lose a minted key'
+    assert 'out of date' in err and 'refuse it locally' in err, 'and the dead end is explained'

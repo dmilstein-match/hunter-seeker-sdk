@@ -71,6 +71,16 @@ serves as 2.1.1, and a PyPI version is immutable.
   error rather than a silent no-op, an exempt surface prints as `exempt` and never as `yes`, and
   every exemption prints with its reason on every run.
   `scripts/hs-surface-parity.test.mjs` pins all of that with deliberate violations.
+- `hs signup` says when `hs.yaml` is inside a git repository and not ignored, and never edits
+  `.gitignore` itself. The note is deliberately not an alarm: the key it just wrote is a TEST key
+  and committing it is harmless by design, so claiming a leak would be false — and false warnings
+  are how real ones get ignored. What it says instead is the thing that is true later, at the only
+  moment the user is looking at that file: this is also where a live key goes. Silent when git is
+  absent, when there is no repository, or when the file is already ignored.
+- `hs signup` flags a minted key that this client would refuse. The client requires the full
+  57-character shape while the server accepts any `hsk_` prefix, so if the format ever moves,
+  signup would otherwise write a key every later command rejects locally. It warns and still saves
+  it: a key that cannot be used is recoverable, a key that was never written down is not.
 
 ## 2.0.0 — unreleased
 - Python client for the full tool contract 2.0.0 (rank, score, verify, report, attest, evidence, drift, bundle).
