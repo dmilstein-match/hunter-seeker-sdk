@@ -33,6 +33,11 @@ serves as 2.1.1, and a PyPI version is immutable.
   `score_entity` tool requires. `hs-surface-parity.mjs` gained a fourth leg and `--strict-python`.
 - `hs-surface-parity.mjs` sets `process.exitCode` instead of calling `process.exit()`, which
   aborted Node on Windows and made every local run report 127 whether it passed or failed.
+- New `hs signup`: one unauthenticated POST to `/v1/agents/register` mints a samples-only
+  `hsk_test_` key and writes it to `hs.yaml`, so the five-minute test needs no account, no email
+  and no card. It refuses to overwrite an existing key — a second registration would strand the
+  first one's tenant, its `model_ref`s and its reported outcomes, and the raw key is shown once
+  and stored nowhere else. `--force` says you meant it.
 
 ## 2.0.0 — unreleased
 - Python client for the full tool contract 2.0.0 (rank, score, verify, report, attest, evidence, drift, bundle).
