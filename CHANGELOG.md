@@ -38,6 +38,28 @@ serves as 2.1.1, and a PyPI version is immutable.
   and no card. It refuses to overwrite an existing key — a second registration would strand the
   first one's tenant, its `model_ref`s and its reported outcomes, and the raw key is shown once
   and stored nowhere else. `--force` says you meant it.
+- `hs signup` no longer loses the key it just minted. The re-parse of an existing `hs.yaml` ran
+  AFTER the registration call and raised on a comment line or an unquoted YAML scalar — so a `#`
+  in that file meant the server minted a key, the CLI raised `IndexError`, and a credential shown
+  exactly once was gone, leaving its tenant alive and permanently unreachable. The key is now
+  printed before anything that can fail, and the write is atomic.
+- `hs rank`, `hs score` and `hs verify` no longer crash on a hand-edited `hs.yaml`. They shared
+  that same fragile parse, unguarded, on their hot path.
+- `hs init` no longer deletes the key `hs signup` just wrote. It rewrote `hs.yaml` wholesale; it
+  now carries `api_key`/`agent_id` forward while still dropping a stale `model_ref`, which was
+  fitted on whatever dataset was configured before the call.
+- One `_read_spec`/`_write_spec` pair replaces five ad-hoc parsers and writers of `hs.yaml`. The
+  reader tolerates comments, blank lines and unquoted scalars, because `hs init` proposes and a
+  human edits; the writer is atomic and keeps the user's comments.
+- A credential is checked locally before it is sent. `HS_API_KEY` is stripped — a key pasted into
+  CI or a `.env` arrives carrying a newline — and then matched against the published key shape
+  (`hsk_live_`/`hsk_test_` plus 48 hex characters). A documentation placeholder is now named as
+  one: previously it was sent, answered with a bare 401, and an agent read that as "my credentials
+  were rejected" and retried. Every credential failure leaves by the CLI's existing
+  `{error, detail, remedy}` door, because the caller is usually an agent parsing stderr.
+- The README five-minute test and the Python quickstart use `hs signup` instead of handing out a
+  pasteable fake key; `README.md` had carried a literal U+2026 in one. `python/README.md` showed
+  `Client()`, which raises — the constructor requires a credential.
 
 ## 2.0.0 — unreleased
 - Python client for the full tool contract 2.0.0 (rank, score, verify, report, attest, evidence, drift, bundle).

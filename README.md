@@ -33,7 +33,7 @@ clears the bar. This repo is how you plug it into your stack.
 
 ```bash
 pip install hunter-seeker
-export HS_API_KEY=hsk_test_…        # a test key reaches the free sample datasets
+hs signup                            # mints a samples-only key: no account, no email, no card
 hs sample                            # ranks sample:saas_churn (free) and verifies the Verdict → valid
 ```
 
@@ -68,8 +68,9 @@ CI; it is never hand-edited here.
 ## The loop, in five calls
 
 ```python
+import os
 from hunter_seeker import Client
-hs = Client(api_key="hsk_…")
+hs = Client(api_key=os.environ["HS_API_KEY"])   # `hs signup` writes one; never paste a key inline
 run = hs.rank_topk(dataset_id="ds_…", entity_column="account_id", outcome_column="churned", subject_kind="org")
 v   = hs.score_entity(run["model_ref"], row, subject_kind="org")     # band, reasons, signed Verdict
 assert hs.verify(v["verdict"], v["signature"]) == "valid"
