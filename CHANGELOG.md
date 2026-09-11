@@ -1,5 +1,43 @@
 # Changelog
 
+## 2.2.2 — 2026-09-11
+
+Fixes from a review of the 2.2.0 loop. Two of them refuse input 2.2.1 accepted; both refuse
+input that was producing wrong results without saying so.
+
+- `era_lock` raises `ValueError` when a condition's feature is on none of the rows. The README
+  and the package docstring passed `ledger.rows`, which carries no `_prior_*` features, so every
+  condition on a prior graded 'ok' — `agent_prior_n > 97`, the pattern the check exists to catch,
+  included. Both now pass `[ledger.with_priors(r) for r in ledger.rows]` and check `clock_like`
+  as well as `era_locked`.
+- `Ledger.append` refuses a `run_id` it already holds (**new refusal**). A second row stayed
+  unlabelled forever, because `observe` labelled only the first, and reached the fit as a
+  duplicate entity with a null outcome. Fill in a run's outcome with `observe`.
+- `parse_ts` accepts an offset (`Z`, `+02:00`, `-0500`) only directly after `HH:MM:SS[.frac]`
+  (**new refusal**). The engine reads `2026-03-04 10:00:00 +02:00`, `2026-03-04Z` and
+  `2026-03-04T10:00Z` as NULL; the ledger accepted them, so OTHER runs were scored with priors the
+  fit never saw.
+- A NaN or pandas NA group value is NULL, as it is to the engine, not a group called `'nan'`.
+- `Ledger` priors stay correct when a write lands while another thread builds a prior table
+  (`LoopSession` computes priors in a worker thread): a cached table is tagged with the write
+  generation it came from and never served after a later write.
+- `LoopSession` records the run BEFORE gating, so the ledger row survives a gate that raises
+  (an engine 4xx/5xx, a timeout, `MissingSafeguard`); the exception is kept on
+  `session.gate_error`, because the Claude Agent SDK swallows hook exceptions.
+- `LoopMiddleware` clears `hs_recorded` on every run it lets through, so on a checkpointed thread
+  a run after an intercept is recorded instead of silently skipped.
+- The client serialises `datetime`/`date` values as ISO-8601. The ledger accepts a `datetime` ts,
+  and gate() died in `json.dumps` on it. Anything else unencodable still raises `TypeError`.
+- The `claude-agent` extra needs `claude-agent-sdk>=0.1.26`, the first release with the
+  `PostToolUseFailure` event `LoopSession` counts errors from.
+- `__version__` lives in one module, `hunter_seeker/_version.py`, and the User-Agent is built from
+  it; a test asserts it agrees with `pyproject.toml` and this file.
+- Docs: `hs_action_evidence` splits reported outcomes into attested (compliant
+  `hs_attest_action`) and everything else, with no pattern filter and no control input — the
+  2.2.0 text said it compared acted with not-acted "within the same pattern", against the control
+  arm. `control_arm` is for YOUR comparison; the engine does not read it, and `gate()` intercepts
+  never reach its acted cell. `fetch_headers` works over MCP as well as REST.
+
 ## 2.2.1 — 2026-09-10
 
 Text only; no behaviour change.

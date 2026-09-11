@@ -8,7 +8,21 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
+from ._version import __version__
+
 DEFAULT_BASE = "https://hunter-seeker.io/api"
+
+
+def _json_default(o: Any) -> Any:
+    """Dates go out as ISO-8601; nothing else is guessed at.
+
+    The Ledger accepts a `datetime` ts (parse_ts does), and gate() sends the row as-is, so without
+    this every scored, batched or uploaded row carrying one died in json.dumps. Anything else still
+    raises TypeError rather than being str()-ed into a value the engine would misread."""
+    import datetime as _dt
+    if isinstance(o, _dt.date):          # covers datetime, a date subclass
+        return o.isoformat()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
 
 @dataclass(frozen=True)
@@ -44,10 +58,10 @@ class Client:
     # -- transport ---------------------------------------------------------- #
     def _call(self, path: str, body: Optional[Mapping[str, Any]] = None, *, method: str = "POST",
               idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        data = json.dumps(body or {}).encode() if method == "POST" else None
+        data = json.dumps(body or {}, default=_json_default).encode() if method == "POST" else None
         req = urllib.request.Request(self.base + path, data=data, method=method, headers={
             "authorization": self._auth, "content-type": "application/json",
-            "user-agent": "hunter-seeker-python/2.2.1",
+            "user-agent": f"hunter-seeker-python/{__version__}",
             **({"idempotency-key": idempotency_key} if idempotency_key else {}),
         })
         try:

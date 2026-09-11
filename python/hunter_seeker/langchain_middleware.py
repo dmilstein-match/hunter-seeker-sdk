@@ -20,7 +20,11 @@ before the model is called, with the Decision on the state under `hs_decision`, 
 route the run to a human or a stronger model instead of letting this agent proceed. On "proceed"
 or "default" the run continues; the Decision is still on the state. Every run is recorded in the
 ledger exactly once with its outcome unknown — an intercepted run at the gate, every other run in
-`after_agent`.
+`after_agent` — so each invoke needs its own `run_id`: `Ledger.append` refuses one it already holds.
+
+With a checkpointer, the Decision is stored in the checkpoint. LangGraph warns when it deserializes
+a type it was not told about, and blocks it under `LANGGRAPH_STRICT_MSGPACK=true`; add
+`("hunter_seeker.loop", "Decision")` to the serializer's `allowed_msgpack_modules`.
 
 Two LangChain rules this depends on, both SILENT when broken (measured on langchain 1.4.0
 `create_agent`): a `jump_to` the hook did not declare with `hook_config(can_jump_to=...)` is
@@ -75,7 +79,9 @@ class LoopMiddleware(AgentMiddleware):
         row = dict(self.row_from_state(state, runtime))
         d = gate(self.hs, self.model_ref, self.ledger, row, **self.gate_kwargs)
         if d.action != "intercept":
-            return {"hs_decision": d}
+            # Cleared explicitly: on a checkpointed thread the state keeps an earlier run's
+            # hs_recorded=True, and after_agent would then skip recording this run.
+            return {"hs_decision": d, "hs_recorded": False}
         # Recorded here: an intercepted run is exactly the one hs_action_evidence needs on the
         # acted side of its comparison, and after_agent sees hs_recorded and does not repeat it.
         self.ledger.append(row)

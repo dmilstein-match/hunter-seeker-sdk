@@ -20,12 +20,21 @@ One `LoopSession` per agent run. It listens to three hook events — `PreToolUse
      said. Token counts do not arrive through hooks; set them from the result message if you have
      them (`session.tokens_in = ...`) before `Stop` fires, or leave them None.
   2. RECORDS the run in the ledger at `Stop`, with the outcome unknown (None). The outcome is
-     yours to observe later; nothing here infers it from the transcript.
-  3. GATES at `Stop` when a `model_ref` is given: computes the priors from the ledger, scores the
-     finished run (off the event loop), and hands the `Decision` to `on_decision`. The hook itself
-     returns `{}` — at `Stop` the run is already over, so "intercept" means *do not auto-approve
-     its result*, and what that means (hold the PR, route to review, re-run on a stronger model)
-     is the harness's policy, not this module's.
+     yours to observe later; nothing here infers it from the transcript. One session per run_id:
+     `Ledger.append` refuses a run_id it already holds.
+  3. GATES at `Stop` when a `model_ref` is given, AFTER recording: computes the priors from the
+     ledger, scores the finished run (off the event loop), and hands the `Decision` to
+     `on_decision`. The hook itself returns `{}` — at `Stop` the run is already over, so
+     "intercept" means *do not auto-approve its result*, and what that means (hold the PR, route
+     to review, re-run on a stronger model) is the harness's policy, not this module's.
+     If the gate fails (an engine 4xx/5xx, a timeout, `MissingSafeguard`) the run is still in the
+     ledger, `decision` stays None and `gate_error` holds the exception. The Claude Agent SDK turns
+     a hook exception into a control error and carries on, so read `gate_error` after `query()`:
+     `decision is None and gate_error is not None` means apply your default policy, never
+     auto-approve.
+
+`PostToolUseFailure` needs claude-agent-sdk >= 0.1.26 (the extra's floor), and a Claude Code CLI that
+emits it if you point `cli_path` at your own; below that, `errors` reads 0 on every run.
 
 Two things it does NOT do, on purpose:
 
@@ -75,6 +84,7 @@ class LoopSession:
         self.elapsed_ms: Optional[int] = None
         self._seen: set = set()
         self.decision: Optional[Decision] = None
+        self.gate_error: Optional[BaseException] = None
         self.recorded = False
 
     # -- the row -------------------------------------------------------------------------------
@@ -116,12 +126,18 @@ class LoopSession:
             return {}
         self.elapsed_ms = int((datetime.now(timezone.utc) - self.started).total_seconds() * 1000)
         row = self.row()
-        if self.model_ref:
-            # The client is synchronous HTTP; run it off the event loop so the harness keeps moving.
-            self.decision = await asyncio.to_thread(gate, self.hs, self.model_ref, self.ledger, row,
-                                                    **self.gate_kwargs)
+        # Recorded FIRST, so the run's telemetry survives a gate that raises. The row is unlabelled
+        # and a run's priors exclude its own id, so gating after the append scores the same priors.
         self.ledger.append(row)
-        self.recorded = True
+        self.recorded = True         # also stops a later Stop re-billing a failed gate
+        if self.model_ref:
+            try:
+                # The client is synchronous HTTP; run it off the event loop so the harness keeps moving.
+                self.decision = await asyncio.to_thread(gate, self.hs, self.model_ref, self.ledger, row,
+                                                        **self.gate_kwargs)
+            except Exception as e:
+                self.gate_error = e  # the SDK swallows what we raise; keep it where the harness can read it
+                raise
         if self.decision is not None and self.on_decision is not None:
             self.on_decision(self.decision)
         return {}

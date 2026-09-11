@@ -1,6 +1,6 @@
 [project]
 name = "hunter-seeker"
-version = "2.2.1"
+version = "2.2.2"
 description = "Python client and framework tools for the Hunter-Seeker Verdict layer: deterministic, signed, refusable decisions for agents."
 requires-python = ">=3.10"
 dependencies = ["hs-verify>=0.1"]
@@ -16,12 +16,14 @@ Changelog = "https://github.com/dmilstein-match/hunter-seeker-sdk/blob/main/CHAN
 [project.optional-dependencies]
 langchain = ["langchain-core>=0.3"]                  # verdict_tools: the engine as an agent's tools
 langchain-middleware = ["langchain>=1.0"]             # LoopMiddleware: the harness gates the agent
-claude-agent = ["claude-agent-sdk>=0.1"]              # LoopSession.hooks()
+# LoopSession.hooks(). 0.1.26 is the first release whose HookEvent has PostToolUseFailure; below
+# it the error counter reads 0 on every run.
+claude-agent = ["claude-agent-sdk>=0.1.26"]
 crewai = ["crewai>=0.100", "crewai-tools>=0.40"]
 # What CI and the publish workflow install — ONE list, so a release runs the same suite CI does,
 # including the adapter tests that drive the real frameworks (a stubbed framework passed a
 # middleware that did nothing inside the real one).
-test = ["pytest", "pydantic", "langchain>=1.0", "claude-agent-sdk>=0.1"]
+test = ["pytest", "pydantic", "langchain>=1.0", "claude-agent-sdk>=0.1.26"]
 
 [project.scripts]
 hs = "hunter_seeker.cli:main"

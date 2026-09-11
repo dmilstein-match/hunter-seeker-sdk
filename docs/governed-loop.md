@@ -49,8 +49,8 @@ own five small components. Together they are the loop.
    swarm ever scores a customer or an employee, it binds, and OAuth 2.1 is the path.
 
 MCP is `https://hunter-seeker.io/api/mcp`. REST callers get the same operations under
-`/api/v1/<tool>`, plus `fetch_headers` on dataset registration — read a private warehouse
-export without publishing it; the MCP schema lists the field, but MCP clients cannot set it.
+`/api/v1/<tool>`. Both doors accept `fetch_headers` with a `fetch_url` (on `hs_provide_dataset`
+and on `hs_rank_topk`'s `data`) to read a private warehouse export without publishing it.
 Public with no credential: `POST /api/v1/verify-verdict`, `GET /.well-known/jwks.json`, and
 the `hs-verify` (pip) / `@hunter-seeker/verify` (npm) libraries that do the same check offline.
 
@@ -62,7 +62,7 @@ One row per agent run, append-only. This is the whole data contract:
 
 | column | type | who writes it | note |
 |---|---|---|---|
-| `run_id` | string | runtime, at start | unique per run, not per agent |
+| `run_id` | string | runtime, at start | unique per run, not per agent. `Ledger.append` refuses one it already holds; a run's outcome is filled in with `Ledger.observe`, never a second row |
 | `ts` | ISO-8601 | runtime, at start | one parser, one format chain; a `ts` the engine can't parse gives that run **NULL** priors and is counted in `reading.report.group_null_rows`. `Ledger.append` refuses anything but ISO-8601 or epoch seconds/millis, so the priors you compute cannot silently disagree with the engine's |
 | `agent` | string | runtime | model + config fingerprint, e.g. `claude-opus-5/tools-v3` |
 | `task` | string | runtime | task family, not the prompt: `triage`, `pr-review`, `browse-and-extract` |
@@ -94,7 +94,7 @@ hs_provide_dataset({})                          → { dataset_id, upload_url }
     PUT the CSV to upload_url                      no upload cap; ranking time grows about
                                                    linearly (250k rows ≈ 140 s, measured 2026-09-02)
 hs_provide_dataset({ fetch_url })                → server pulls a public https CSV
-                                                   (REST: + fetch_headers for a private one)
+                                                   (+ fetch_headers for a private one)
 hs_append_rows({ chunk_index: 0, csv })          → sandboxed / no egress: ~1,500 rows a chunk,
     hs_append_rows({ dataset_id, chunk_index: 1, csv }) …   header row on every csv chunk
 
@@ -124,13 +124,15 @@ Then, in this order, **the same day** (the `ranking_ref` lives 24 h; the `model_
    `era_lock(pattern["conditions"], [ledger.with_priors(r) for r in ledger.rows])`.
    `trace@1` emits `agent_prior_n`, `task_prior_n`, `tool_prior_n` (one per bound role), and
    those only ever grow, so a condition that bounds one is a date filter. The sample corpus
-   selected `agent_prior_n > 97`. The in-fit test needs no holdout.
+   selected `agent_prior_n > 97`, which grades CLOCK-LIKE (`clock_like`, not `era_locked`). The
+   in-fit test needs no holdout. Pass the priors-attached rows: `ledger.rows` alone does not
+   carry the `_prior_*` features, and `era_lock` raises rather than grade a feature no row has.
 4. **`hs_model_quality`**, **`hs_context_brief`** — file the brief; it is the whole
    analysis as one artifact and it costs nothing.
 5. **`hs_drift_status({ model_ref })`** → `keep` / `refit` / `abandon`, and
    `pattern_diff` naming what moved. This is your alert, not your switch.
 6. **Store** `model_ref`, the verdict, the signature, the brief. Swap the live `model_ref`
-   if actionable and era-lock-clean.
+   if actionable and era-lock-clean — `era_locked` and `clock_like` both false.
 
 **`refit_of` is not optional.** The engine counts every fit of an analysis but compares
 only the ones you link. Measured: `cycles_observed: 19`, `pattern: "no_prior"` — nineteen
@@ -212,12 +214,18 @@ instead and `act` becomes "let it run" — both are fine, and a router that assu
 them is wrong on the other. `max_autonomy` (L0–L4) is how much rope this specific decision
 earns; treat it as a ceiling on what the intercept may do unattended.
 
-**The control arm is what makes the loop measurable.** Acting on the score destroys the
-data the score needs: once a prediction causes a reroute, you stop observing what would
+**The control arm is what makes the loop measurable — by you.** Acting on the score destroys
+the data the score needs: once a prediction causes a reroute, you stop observing what would
 have happened. Exempt a fixed 10–20% of runs from the intervention, permanently, tagged in
-the ledger. `hs_action_evidence` compares acted vs not-acted *within the same pattern* and
-returns `live: null` until each cell has 30 rows, `small_n` under 100. No control arm, no
-evidence — the loop runs blind while reporting confidence.
+the ledger (`d.control`), and measure intercepts by comparing intercepted runs against control
+runs in your own ledger. Without it the loop runs blind while reporting confidence.
+
+The engine does not read that tag. `hs_action_evidence` splits every entity with a reported
+outcome under the `model_ref` into *acted* (a compliant `hs_attest_action` row) and *not
+acted* (everything else, a non-compliant attestation included) — no pattern filter, no
+control input — and returns `live: null` until each cell has 30 rows, `small_n` under 100.
+`gate()` intercepts and proceeds write no attestation, so they never reach its acted cell;
+what it measures is attested lever changes (§6).
 
 ---
 
@@ -232,8 +240,10 @@ hs_report_outcome({ model_ref, outcomes: [
 
 `event_id` is the idempotency key; the same id on retry writes once. Up to 10,000 per
 call. This never retrains anything — it is evidence for `hs_action_evidence` and a drift
-signal for `hs_drift_status`. Report **every** run, control arm included; the comparison
-needs both sides.
+signal for `hs_drift_status`. Report **every** run, control arm included — drift needs them,
+and so does your own control comparison. Know what that does to `hs_action_evidence`: every
+reported run you did not attest, intercepted and default-policy runs included, lands in its
+not-acted cell.
 
 Then, once cells fill: `hs_action_evidence({ model_ref })` → rates, n, difference, and a
 Newcombe interval. `null` means not enough evidence yet, not zero effect.
@@ -264,10 +274,12 @@ hs_attest_action({ model_ref, entity_id, lever_token, acted_at, post_value })   
 
 Attest with the *new* value, after the change actually happened. The threshold never
 crosses the wire; the engine says whether you crossed it and how far. Then
-`hs_action_evidence` tells you whether runs you moved failed less than the control arm
-that you didn't. That is the number that justifies keeping the change — and every lever
-is labelled `association_not_causal`, which is why the control arm, not the lever, is the
-evidence.
+`hs_action_evidence` tells you whether the runs you attested failed less than every other
+run with a reported outcome under that `model_ref` — not less than the control arm, which it
+does not read. For moved-vs-control, compute it from your ledger's `control` flag. Attest
+only runs you actually changed, and never a control-arm run. That comparison is the number
+that justifies keeping the change — and every lever is labelled `association_not_causal`,
+which is why the control arm, not the lever, is the evidence.
 
 **Trap:** `likelihood_direction` is per lever and follows the polarity. On `failed`
 (adverse) a lever reads `lower` — it moves the run *out* of the failing pattern. On
