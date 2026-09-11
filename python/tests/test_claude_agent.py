@@ -86,6 +86,35 @@ def test_a_failed_gate_still_records_the_run_and_says_so():
     ledger.observe("r1", 1)                         # and the outcome can still be filled in
 
 
+def test_a_run_id_already_in_the_ledger_is_refused_before_the_run_starts():
+    ledger = Ledger()
+    ledger.append({"run_id": "r1", "ts": "2026-01-01T00:00:00Z", "agent": "a", "failed": 1})
+    with pytest.raises(ValueError, match="already in the ledger"):
+        LoopSession(FakeScoringClient(), ledger, run_id="r1", agent="a", task="t")
+
+
+@pytest.mark.parametrize("kw", [{"ts": "2026-03-04 10:00:00 +02:00"}, {"extra": {"ts": "03/04/2026"}}],
+                         ids=["ts", "ts-in-extra"])
+def test_a_ts_the_ledger_cannot_parse_is_refused_before_the_run_starts(kw):
+    with pytest.raises(ValueError, match="ISO-8601"):
+        LoopSession(FakeScoringClient(), Ledger(), run_id="r1", agent="a", task="t", **kw)
+
+
+def test_an_append_refused_at_stop_is_on_the_session():
+    """Two sessions built for one run_id before either stops: the second Stop's append is refused.
+    The SDK swallows the raise, and gate_error stayed None, so the documented check said nothing
+    about a run that was neither recorded nor gated."""
+    ledger = Ledger()
+    hs = FakeScoringClient()
+    s1 = LoopSession(hs, ledger, run_id="r1", agent="a", task="t", model_ref=MODEL_REF, control_fraction=0.0)
+    s2 = LoopSession(hs, ledger, run_id="r1", agent="a", task="t", model_ref=MODEL_REF, control_fraction=0.0)
+    _drive(s1, [("stop", {})])
+    with pytest.raises(ValueError, match="already in the ledger"):
+        _drive(s2, [("stop", {})])
+    assert s2.decision is None and isinstance(s2.gate_error, ValueError) and not s2.recorded
+    assert len(hs.calls) == 1 and len(ledger.rows) == 1          # the refused run was not billed
+
+
 def test_no_model_ref_means_record_only():
     ledger = Ledger()
     hs = FakeScoringClient()

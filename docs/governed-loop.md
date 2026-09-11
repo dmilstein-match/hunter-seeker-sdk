@@ -64,7 +64,7 @@ One row per agent run, append-only. This is the whole data contract:
 |---|---|---|---|
 | `run_id` | string | runtime, at start | unique per run, not per agent. `Ledger.append` refuses one it already holds; a run's outcome is filled in with `Ledger.observe`, never a second row |
 | `ts` | ISO-8601 | runtime, at start | one parser, one format chain; a `ts` the engine can't parse gives that run **NULL** priors and is counted in `reading.report.group_null_rows`. `Ledger.append` refuses anything but ISO-8601 or epoch seconds/millis, so the priors you compute cannot silently disagree with the engine's |
-| `agent` | string | runtime | model + config fingerprint, e.g. `claude-opus-5/tools-v3` |
+| `agent` | string | runtime | model + config fingerprint, e.g. `claude-opus-5/tools-v3`. For `agent`, `task` and `tool` alike, a missing value (None, NaN, pandas NA) or a cell pandas' CSV reader turns into NaN (`''`, `NA`, `null`, `None`, `n/a`, ...) is **NULL** to the engine, so that run gets NULL priors for the role; `Ledger.priors` does the same |
 | `task` | string | runtime | task family, not the prompt: `triage`, `pr-review`, `browse-and-extract` |
 | `tool` | string | runtime | primary tool or integration |
 | `steps`, `retries`, `elapsed_ms`, `tokens_in`, `tokens_out`, `errors`, `repeated_actions`, `hit_cap` | numeric / 0-1 | runtime, at end | telemetry — **required in practice**; on the sample corpus half the selected arms came from telemetry, and on SWE-bench the reading alone landed one arm short |

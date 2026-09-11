@@ -65,6 +65,31 @@ def test_priors_are_attached_and_every_run_is_recorded_once(verdict):
     assert ledger.rows[-1]["failed"] is None
 
 
+@pytest.mark.parametrize("verdict", [ADVERSE, DESIRABLE])
+def test_a_run_id_already_recorded_is_refused_before_the_gate_bills_it(verdict):
+    """after_agent's append refused a duplicate only at the END of the run: the decision was billed
+    and the model had run. before_agent refuses it, before either."""
+    ledger = Ledger()
+    ledger.append({"run_id": "r1", "ts": "2025-12-31T00:00:00Z", "agent": "a", "task": "t", "tool": "browser", "failed": 0})
+    hs, loop = _loop(ACT_L3, verdict, ledger)
+    replies = iter([AIMessage(content="MODEL_RAN") for _ in range(3)])
+    agent = create_agent(model=GenericFakeChatModel(messages=replies), tools=[], middleware=[loop])
+    with pytest.raises(ValueError, match="already in the ledger"):
+        agent.invoke({"messages": [{"role": "user", "content": "go"}]})
+    assert hs.calls == []                                   # no decision billed
+    assert len(list(replies)) == 3                          # and the model never ran
+    assert [r["run_id"] for r in ledger.rows] == ["r1"]
+
+
+def test_a_ts_the_ledger_cannot_parse_is_refused_before_the_gate_bills_it():
+    hs = FakeScoringClient(ACT_L3, DESIRABLE)
+    loop = LoopMiddleware(hs, Ledger(), model_ref=MODEL_REF, control_fraction=0.0,
+                          row_from_state=lambda state, runtime: {**_row(state, runtime), "ts": "03/04/2026"})
+    with pytest.raises(ValueError, match="ISO-8601"):
+        _invoke(loop)
+    assert hs.calls == []
+
+
 @dataclass
 class _Ctx:
     run_id: str

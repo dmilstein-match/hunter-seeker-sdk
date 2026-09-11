@@ -1,11 +1,54 @@
 # Changelog
 
+## 2.2.3 — 2026-09-11
+
+Fixes from a second review of the governed loop. Three of them raise where 2.2.2 did not
+(**new refusal**); each was a wrong result, or a failure later where it cost more. One changes
+priors 2.2.2 returned: a group cell pandas reads as NA is NULL.
+
+- `gate()` sends a NaN, pandas `NA` or `NaT` cell as JSON `null`, which the engine reads as NULL.
+  `json.dumps` wrote NaN as a bare `NaN` token, which is not JSON, so the product answered
+  `422 invalid_request` ("The request body is not valid JSON.") on exactly the pandas rows 2.2.2's
+  NaN-group fix covered; NA and NaT raised `TypeError`. Everywhere else (`score_batch`,
+  `append_rows`, `upload_rows`) the client raises `ValueError` on a NaN before sending, rather than
+  taking the server's 422: send `df.where(df.notna(), None)` on those paths.
+- A group cell holding exactly one of pandas' default CSV NA strings (`''`, `NA`, `N/A`, `n/a`,
+  `NULL`, `null`, `NaN`, `nan`, `None`, `<NA>`, `#N/A`, ... — `STR_NA_VALUES`) is NULL, as it is to
+  the engine, which reads every fit table with `pd.read_csv` defaults. The ledger counted it as a
+  group, so gate() scored other runs in it with real counts where the fit saw NULL. Matched
+  exactly: `' NA'` and `'na'` stay groups.
+- `parse_ts` reads pandas `NaT` as NULL. NaT is a `datetime` subclass, so it came back as a time,
+  and `Ledger.append` took a NaT-timed row and counted it as an earlier peer in every other run's
+  priors; the engine drops a NULL-time row before any window. `append` now refuses it
+  (**new refusal**), and `priors()` gives NULL for a NaT-timed run.
+- A NaN or pandas NA outcome is unknown (None), as `df.to_dict('records')` writes it for a run still
+  in flight. The ledger refused it, so `extend()` on a ledger with unlabelled runs raised.
+- `Ledger.extend` is all or nothing: every row is checked before any is written, and a `run_id`
+  repeated inside the batch is refused. A refused batch kept the rows before the bad one, so
+  re-running the corrected batch failed on the first of them as a duplicate.
+- `era_lock` reads its rows once, so a generator or `map` works again (2.2.2 consumed it, then
+  reported every feature absent), and raises `ValueError` on no rows (**new refusal**): graded over
+  nothing, every condition was 'ok' and the pattern read as clean.
+- `LoopSession` refuses a `run_id` the ledger already holds, or a `ts` it cannot parse, in its
+  constructor, before `query()` starts (**new refusal**); both used to fail at `Stop`, after the
+  run. An append refused at `Stop` (a run_id another session recorded after this one was built) is
+  kept on `session.gate_error` with `recorded` False, so the documented check `decision is None and
+  gate_error is not None` sees a run that was neither recorded nor gated.
+- `LoopMiddleware` makes the same two refusals in `before_agent`, before `gate()` bills a decision
+  and before the model runs. They came from `after_agent`'s append, after both.
+- n8n 2.2.2: republishes the node so npm serves the corrected `examples/close-the-loop.json`
+  (`meta.requires`, `meta.levers_on_this_sample`, the "Lever token minted?" node, and the 24-hour
+  `ranking_ref` lifetime); npm's 2.2.1 still carries the old example. No node code changed.
+- Docs: the 2.2.2 entry below said two of its fixes refuse input 2.2.1 accepted. There are three:
+  `era_lock` refusing a condition whose feature is on none of the rows is one.
+
 ## 2.2.2 — 2026-09-11
 
-Fixes from a review of the 2.2.0 loop. Two of them refuse input 2.2.1 accepted; both refuse
+Fixes from a review of the 2.2.0 loop. Three of them refuse input 2.2.1 accepted; all three refuse
 input that was producing wrong results without saying so.
 
-- `era_lock` raises `ValueError` when a condition's feature is on none of the rows. The README
+- `era_lock` raises `ValueError` when a condition's feature is on none of the rows
+  (**new refusal**); `era_lock(pattern, ledger.rows)`, as the 2.2.1 README wrote it, now raises. The README
   and the package docstring passed `ledger.rows`, which carries no `_prior_*` features, so every
   condition on a prior graded 'ok' — `agent_prior_n > 97`, the pattern the check exists to catch,
   included. Both now pass `[ledger.with_priors(r) for r in ledger.rows]` and check `clock_like`
