@@ -1977,7 +1977,7 @@
       "post": {
         "operationId": "register_agent",
         "summary": "Register an agent and receive a samples-only key.",
-        "description": "Mint a hsk_test_ machine key in ONE unauthenticated call — no signup, no email, no card. The key runs the free sample datasets only, consumes no quota, and is safe to print in a log; the restriction is enforced before any upload URL is minted or any byte is read. The response carries a claim_url: a human can open it later, sign in, and the SAME key keeps working against a workspace they own, with every model_ref, reported outcome and drift cycle preserved. Claiming attaches a human to the TENANT, never to the CREDENTIAL — the key stays a test key, and decisions about people stay capped at max_autonomy L0 because a machine credential carries no human principal. A `mode` field in the request body is IGNORED: this endpoint cannot issue a live key.",
+        "description": "Mint a hsk_test_ machine key in ONE unauthenticated call — no signup, no email, no card. The key runs the free sample datasets only, consumes no quota, and is safe to print in a log; the restriction is enforced before any upload URL is minted or any byte is read. The response carries a claim_url: a human can open it later, sign in, and the SAME key keeps working against a workspace they own, with every model_ref it produced preserved. Claiming attaches a human to the TENANT, never to the CREDENTIAL — the key stays a test key, and decisions about people stay capped at max_autonomy L0 because a machine credential carries no human principal. A `mode` field in the request body is IGNORED: this endpoint cannot issue a live key.",
         "tags": [
           "orient"
         ],
