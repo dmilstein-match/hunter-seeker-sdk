@@ -171,8 +171,8 @@ def _signup(agent_caller: str, force: bool) -> int:
     wrong thing the moment somebody has two.
 
     IT REFUSES TO OVERWRITE. A second `hs signup` in a directory that already holds a key would
-    silently strand the first one — its tenant, its model_refs and its reported outcomes still
-    exist and are now unreachable, because the raw key was shown once and never stored anywhere
+    silently strand the first one — its tenant and the model_refs it produced still exist and are
+    now unreachable, because the raw key was shown once and never stored anywhere
     else. `--force` is the way to say you meant it.
     """
     import urllib.error
@@ -184,7 +184,7 @@ def _signup(agent_caller: str, force: bool) -> int:
             json.dumps({
                 "error": "key_exists",
                 "detail": f"hs.yaml already holds {existing[:14]}... Registering again would strand it: "
-                          "its tenant, model_refs and reported outcomes stay alive but the key was shown "
+                          "its tenant and the model_refs it produced stay alive, but the key was shown "
                           "once and is not recoverable.",
                 "remedy": "Use the key you have, or pass --force if you really want a new tenant.",
             }, indent=2),
