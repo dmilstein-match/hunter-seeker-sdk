@@ -1666,7 +1666,7 @@
       "post": {
         "operationId": "hs_attest_action",
         "summary": "Attest that a lever was pulled",
-        "description": "Free; records that you acted on a lever. Pass the lever_token from hs_explain_levers and the entity's NEW value for that feature after your action. The engine evaluates compliance inside its boundary — was the target crossed, and how far did the entity move (dose_fraction 0–1) — and returns only {compliant, dose_fraction}; the threshold never crosses the wire. The attestation is what lets hs_action_evidence compare acted vs not-acted entities within the same pattern. Idempotent by event_id. Common mistakes: attesting before the change actually happened; passing the OLD value.",
+        "description": "Free; records that you acted on a lever. Pass the lever_token from hs_explain_levers and the entity's NEW value for that feature after your action. The engine evaluates compliance inside its boundary — was the target crossed, and how far did the entity move (dose_fraction 0–1) — and returns only {compliant, dose_fraction}; the threshold never crosses the wire. The attestation is what puts this entity in hs_action_evidence's acted group, which is compared with every other entity that has a reported outcome under the model_ref — no pattern filter, no control-arm input. Idempotent by event_id. Common mistakes: attesting before the change actually happened; passing the OLD value.",
         "tags": [
           "close"
         ],
@@ -1773,7 +1773,7 @@
       "post": {
         "operationId": "hs_action_evidence",
         "summary": "Did acting on this pattern work?",
-        "description": "Free; no engine run. For a model_ref, returns the live evidence block (from outcomes you reported, comparing entities with a compliant attestation against those without, within the same pattern). It carries rates, n, the difference, and a Newcombe hybrid-score confidence interval. live is NULL until each cell has at least 30 rows, and small_n is true below 100 per cell — a null here means 'not enough evidence yet', not zero effect. Best for: deciding whether to keep acting on a pattern; a governance report. Common mistakes: treating small_n evidence as settled; reading a null live block as zero effect rather than as not enough evidence yet.",
+        "description": "Free; no engine run. For a model_ref, returns the live evidence block (from outcomes you reported, comparing entities with a compliant hs_attest_action against every other entity with a reported outcome under the model_ref, a non-compliant attestation included — no pattern filter, no control-arm input). It carries rates, n, the difference, and a Newcombe hybrid-score confidence interval. live is NULL until each cell has at least 30 rows, and small_n is true below 100 per cell — a null here means 'not enough evidence yet', not zero effect. Best for: deciding whether to keep acting on a pattern; a governance report. Common mistakes: treating small_n evidence as settled; reading a null live block as zero effect rather than as not enough evidence yet.",
         "tags": [
           "judge"
         ],
@@ -2533,7 +2533,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused. Note MCP clients cannot set this — it is for REST/SDK callers."
+            "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused."
           },
           "direct_upload": {
             "type": "boolean",
@@ -2702,7 +2702,7 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused. Note MCP clients cannot set this — it is for REST/SDK callers."
+                "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused."
               },
               "dataset_id": {
                 "type": "string",

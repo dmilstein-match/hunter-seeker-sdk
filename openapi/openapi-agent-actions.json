@@ -1456,7 +1456,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused. Note MCP clients cannot set this — it is for REST/SDK callers."
+            "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused."
           },
           "direct_upload": {
             "type": "boolean",
@@ -1625,7 +1625,7 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused. Note MCP clients cannot set this — it is for REST/SDK callers."
+                "description": "Request headers to send WITH fetch_url — e.g. { \"Authorization\": \"Bearer …\" }. Lets us read a private object, a signed warehouse export or an internal endpoint without you publishing the data at an open URL. Headers change AUTHORIZATION only: the URL must still pass the same public-https guard, and redirects are still refused, so a credential cannot be walked to another host. `Host`, `Content-Length` and the hop-by-hop headers are refused."
               },
               "dataset_id": {
                 "type": "string",
