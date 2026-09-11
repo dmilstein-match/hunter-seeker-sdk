@@ -12,7 +12,7 @@
     { "name": "Weekly refresh", "type": "n8n-nodes-base.scheduleTrigger", "parameters": { "rule": { "interval": [{ "field": "weeks" }] } } },
 
     { "name": "Rank (ONE RUN)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
-      "notes": "The only billable step, and it is refunded on an honest-empty. Everything downstream reuses ranking_ref for an hour, free.",
+      "notes": "The only billable step, and it is refunded on an honest-empty. Everything downstream reuses ranking_ref for 24 hours, free.",
       "parameters": { "operation": "rank", "dataSource": "datasetId", "datasetId": "sample:saas_churn", "entityColumn": "customer_id", "outcomeColumn": "churned", "subjectKind": "org", "outcomeIsDesirable": "no", "topK": 20 } },
 
     { "name": "Cleared?", "type": "n8n-nodes-base.if",
