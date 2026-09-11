@@ -78,7 +78,7 @@ hs_rank_topk({
 What comes back, when the finding clears the bar:
 
 - `entities[]` — the ranked list, each with `score`, `band`, `max_autonomy`
-- `model_ref` (90 days) for decision-time scoring; `ranking_ref` (1 hour) for free interrogation
+- `model_ref` (90 days) for decision-time scoring; `ranking_ref` (24 hours) for free interrogation
 - `verdict` + `signature` — the signed record every downstream agent cites
 - `leak_guard[]` — quarantined columns with plain-English reasons
 - `drift` — because `refit_of` was passed: did the pattern change since last cycle
