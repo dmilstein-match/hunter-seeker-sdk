@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.1 — 2026-09-10
+
+Text only; no behaviour change.
+
+- `hs signup` no longer says a second signup would strand the first tenant's "reported outcomes".
+  `hs signup` mints a `hsk_test_` key, which holds read scopes only and stays a test key after a
+  claim, so its tenant has the model_refs it produced and nothing else to strand.
+
 ## 2.2.0 — 2026-09-10
 
 Everything below landed after 2.1.2 was uploaded to PyPI (2026-09-08 18:23 UTC). PyPI versions

@@ -44,4 +44,4 @@ __all__ = ["Client", "HunterSeekerError", "ProblemDetails",
            "Ledger", "gate", "decide", "Decision", "control_arm", "era_lock"]
 # Kept in step with pyproject.toml by the versions-agree CI job. This read 2.0.0 through four
 # releases while pyproject.toml and the User-Agent string both said 2.1.1.
-__version__ = "2.2.0"
+__version__ = "2.2.1"
