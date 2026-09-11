@@ -7,6 +7,8 @@ run there; without langchain the whole module skips.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import pytest
 
 pytest.importorskip("langchain.agents.middleware")
@@ -61,3 +63,31 @@ def test_priors_are_attached_and_every_run_is_recorded_once(verdict):
     assert hs.calls[0]["agent_prior_n"] == 1 and hs.calls[0]["agent_prior_outcome_rate"] == 0.0
     assert [r["run_id"] for r in ledger.rows] == ["r0", "r1"]
     assert ledger.rows[-1]["failed"] is None
+
+
+@dataclass
+class _Ctx:
+    run_id: str
+
+
+def test_a_checkpointed_thread_records_the_run_after_an_intercept():
+    """LangGraph keeps state keys across invokes on one thread_id. hs_recorded=True from an
+    intercepted run used to survive into the next run, and after_agent then skipped recording it."""
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    ledger = Ledger()
+    hs = FakeScoringClient(ACT_L3, ADVERSE)
+    loop = LoopMiddleware(hs, ledger, model_ref=MODEL_REF, control_fraction=0.0,
+                          row_from_state=lambda state, runtime: {**_row(state, runtime), "run_id": runtime.context.run_id})
+    # a separate AIMessage per reply: a repeated instance is deduped by id and hides whether the model ran
+    model = GenericFakeChatModel(messages=iter([AIMessage(content="MODEL_RAN") for _ in range(3)]))
+    agent = create_agent(model=model, tools=[], middleware=[loop], checkpointer=InMemorySaver(), context_schema=_Ctx)
+    config = {"configurable": {"thread_id": "one-thread"}}
+
+    out1 = agent.invoke({"messages": [{"role": "user", "content": "go"}]}, config=config, context=_Ctx("r1"))
+    assert out1["hs_decision"].action == "intercept"
+    hs.verdict = DESIRABLE
+    out2 = agent.invoke({"messages": [{"role": "user", "content": "again"}]}, config=config, context=_Ctx("r2"))
+    assert out2["hs_decision"].action == "proceed"
+    assert any(getattr(m, "content", None) == "MODEL_RAN" for m in out2["messages"])
+    assert [r["run_id"] for r in ledger.rows] == ["r1", "r2"]

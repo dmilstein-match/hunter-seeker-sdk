@@ -126,6 +126,20 @@ def test_group_binding_is_explicit():
 @pytest.mark.parametrize("value, expect", [
     ("2026-03-04T10:00:00Z", datetime(2026, 3, 4, 10, 0, 0)),
     ("2026-03-04T10:00:00+02:00", datetime(2026, 3, 4, 8, 0, 0)),          # the instant, offset dropped
+    ("2026-03-04T10:00:00-05:00", datetime(2026, 3, 4, 15, 0, 0)),         # negative offset
+    ("2026-03-04T10:00:00+05:30", datetime(2026, 3, 4, 4, 30, 0)),         # half-hour offset
+    ("2026-03-04T10:00:00+0530", datetime(2026, 3, 4, 4, 30, 0)),          # colon-less offset
+    ("2026-03-04T10:00:00-0500", datetime(2026, 3, 4, 15, 0, 0)),
+    ("2026-03-04T10:00:00.5+02:00", datetime(2026, 3, 4, 8, 0, 0, 500000)),
+    ("2026-03-04T10:00", datetime(2026, 3, 4, 10, 0, 0)),                  # no seconds, no offset: fine
+    # An offset anywhere but directly after HH:MM:SS is NULL to the engine (checked against
+    # readings.pit.parse_times), so the ledger refuses it rather than compute priors the fit never saw.
+    ("2026-03-04 10:00:00 +02:00", None),
+    ("2026-03-04T10:00:00 Z", None),
+    ("2026-03-04Z", None),
+    ("2026-03-04+02:00", None),
+    ("2026-03-04T10:00Z", None),
+    ("2026-03-04 10:00+02:00", None),
     ("2026-03-04 10:00:00", datetime(2026, 3, 4, 10, 0, 0)),               # naive passes through
     ("2026-03-04", datetime(2026, 3, 4, 0, 0, 0)),
     ("2026-03-04T10:00:00.123456789Z", datetime(2026, 3, 4, 10, 0, 0, 123456)),  # µs, like the engine
@@ -149,7 +163,10 @@ def test_control_arm_is_stable_and_near_the_fraction():
     assert picked == [control_arm(i, fraction=0.15) for i in ids]            # same answer, always
     share = sum(picked) / len(ids)
     assert 0.14 < share < 0.16, share
-    assert not any(control_arm(i, fraction=0.0) for i in ids[:100])
+    # all 20,000: only two of them (run_00948, run_19020) hash to bucket 0, where a `<=` would hold
+    # a run out with the arm switched off
+    assert not any(control_arm(i, fraction=0.0) for i in ids)
+    assert control_arm("run_00948", fraction=0.0) is False
     assert all(control_arm(i, fraction=1.0) for i in ids[:100])
 
 
@@ -201,6 +218,100 @@ def test_gate_attaches_the_priors_before_scoring():
     assert sent["agent_prior_n"] == sum(1 for r in PARSABLE if r["agent"] == "a1")
     assert isinstance(d, Decision) and d.action == "intercept" and d.signature["kid"] == "test"
     assert d.row_scored == sent
+    # the Verdict must name the run later passed to report_outcome, under the model_ref given
+    assert hs.kwargs[0]["model_ref"] == MODEL_REF and hs.kwargs[0]["entity_id"] == "r_new"
+
+
+GATE_ROW = {"run_id": "r1", "ts": "2026-01-01T00:00:00Z", "agent": "a", "task": "t", "tool": "x"}
+
+
+def test_gate_forwards_needs():
+    hs = FakeScoringClient(ACT_L2, ADVERSE)
+    assert gate(hs, MODEL_REF, Ledger(), GATE_ROW, control_fraction=0.0).action == "default"   # L2 < L3
+    assert gate(hs, MODEL_REF, Ledger(), GATE_ROW, needs=Autonomy.L2, control_fraction=0.0).action == "intercept"
+
+
+def test_gate_forwards_subject_kind_and_the_acknowledgement():
+    hs = FakeScoringClient()
+    gate(hs, MODEL_REF, Ledger(), GATE_ROW, subject_kind="person", acknowledge_decision_support=True,
+         control_fraction=0.0)
+    assert hs.kwargs[-1] == {"model_ref": MODEL_REF, "entity_id": "r1", "subject_kind": "person",
+                             "acknowledge_decision_support": True}
+
+
+def test_gate_forwards_the_salt():
+    rid = next(f"r{i}" for i in range(10_000)
+               if control_arm(f"r{i}", fraction=0.5, salt="a") != control_arm(f"r{i}", fraction=0.5, salt="b"))
+    for s in ("a", "b"):
+        d = gate(FakeScoringClient(), MODEL_REF, Ledger(), {**GATE_ROW, "run_id": rid}, control_fraction=0.5, salt=s)
+        assert d.control == control_arm(rid, fraction=0.5, salt=s)
+
+
+# ── the ledger's own invariants ───────────────────────────────────────────────────────────
+
+def test_a_row_appended_after_a_prior_was_read_counts_toward_the_next_one():
+    """priors() caches a per-group table; append must invalidate it or a live loop reads stale priors."""
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": "x", "task": "t", "tool": "u", "failed": 1})
+    new = {"run_id": "c", "ts": "2026-01-01T00:10:00Z", "agent": "x", "task": "t", "tool": "u"}
+    p1 = ledger.priors(new)                      # populates the cached table for ('agent', 'x')
+    assert p1["agent_prior_n"] == 1 and p1["agent_prior_outcome_rate"] == 1.0
+    ledger.append({"run_id": "b", "ts": "2026-01-01T00:05:00Z", "agent": "x", "task": "t", "tool": "u", "failed": 0})
+    p2 = ledger.priors(new)
+    assert p2["agent_prior_n"] == p1["agent_prior_n"] + 1 and p2["agent_prior_outcome_rate"] == 0.5
+
+
+@pytest.mark.parametrize("write", [
+    lambda ledger: ledger.observe("b", 0),
+    lambda ledger: ledger.append({"run_id": "d", "ts": "2026-01-01T00:02:00Z", "agent": "x", "failed": 0}),
+], ids=["observe", "append"])
+def test_a_write_during_a_table_build_is_not_cached_away(write):
+    """LoopSession computes priors in a worker thread while the event loop writes. A write that
+    lands mid-build must be visible to the NEXT read, not hidden until some later write."""
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": "x", "failed": 1})
+    ledger.append({"run_id": "b", "ts": "2026-01-01T00:01:00Z", "agent": "x", "failed": None})
+    new = {"run_id": "c", "ts": "2026-01-01T00:10:00Z", "agent": "x"}
+
+    class WriteMidBuild(list):
+        fired = False
+
+        def __getitem__(self, i):
+            if not WriteMidBuild.fired:
+                WriteMidBuild.fired = True
+                write(ledger)                    # the other thread's write, interleaved
+            return list.__getitem__(self, i)
+
+    ledger._times = WriteMidBuild(ledger._times)
+    during = ledger.priors(new)
+    assert WriteMidBuild.fired and during["agent_prior_n"] == 1      # built before the write landed
+    assert ledger.priors(new)["agent_prior_n"] == 2                  # and not served after it
+
+
+def test_a_run_id_is_recorded_once():
+    """One row per run. A second row stayed unlabelled forever (observe labelled only the first)
+    and reached the fit as a duplicate entity with a null outcome."""
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": "x", "failed": None})
+    with pytest.raises(ValueError, match="observe"):
+        ledger.append({"run_id": "a", "ts": "2026-01-01T00:05:00Z", "agent": "x", "failed": None})
+    assert len(ledger.rows) == 1
+    ledger.observe("a", 1)
+    assert [r["failed"] for r in ledger.rows] == [1]
+
+
+def test_a_nan_group_value_is_null_not_a_group_called_nan():
+    """`df.to_dict('records')` writes NaN for a missing string. The engine reads it as NULL."""
+    nan = float("nan")
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": nan, "task": "t", "tool": "u", "failed": 1})
+    ledger.append({"run_id": "b", "ts": "2026-01-01T00:01:00Z", "agent": nan, "task": "t", "tool": "u", "failed": 0})
+    p = ledger.priors({"run_id": "c", "ts": "2026-01-01T00:02:00Z", "agent": nan, "task": "t", "tool": "u"})
+    assert p["agent_prior_n"] is None and p["agent_prior_outcome_rate"] is None
+    assert p["task_prior_n"] == 2 and p["tool_prior_n"] == 2
+    # the own-run exclusion follows the same rule: a NaN-agent row is in no table, so re-scoring it
+    # under its own id with the string "nan" subtracts nothing (it used to give -1)
+    assert ledger.priors({"run_id": "a", "ts": "2026-01-01T00:05:00Z", "agent": "nan"})["agent_prior_n"] == 0
 
 
 def test_gate_scores_a_control_run_but_returns_default():
@@ -265,3 +376,18 @@ def test_conditions_are_rebuilt_from_the_predicate_not_the_direction_word():
     higher = [{"feature": "x", "direction": "higher", "threshold": 10, "operator": ">", "missing_values": "excluded"}]
     assert era_lock(lower, rows)["joint_coverage_fit"] == pytest.approx(2 / 3, abs=1e-4)
     assert era_lock(higher, rows)["joint_coverage_fit"] == pytest.approx(1 / 3, abs=1e-4)
+
+
+def test_era_lock_refuses_ledger_rows_that_do_not_carry_the_priors():
+    """`Ledger.rows` holds the appended columns only. Graded on it, every `_prior_n` condition is
+    missing on every row and came back 'ok' — the headline era-locked pattern included."""
+    ledger = Ledger()
+    for i in range(600):
+        ledger.append({"run_id": f"r{i}", "ts": f"2026-01-{1 + i // 40:02d}T{(i % 40) // 2:02d}:{(i % 2) * 30:02d}:00Z",
+                       "agent": "a", "task": "t", "tool": "u", "failed": i % 3 == 0})
+    pattern = [{"feature": "agent_prior_n", "direction": "higher", "threshold": 97, "operator": ">",
+                "missing_values": "excluded"}]
+    with pytest.raises(ValueError, match="with_priors"):
+        era_lock(pattern, ledger.rows)
+    r = era_lock(pattern, [ledger.with_priors(x) for x in ledger.rows])
+    assert r["clock_like"] or r["era_locked"]
