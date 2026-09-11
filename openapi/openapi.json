@@ -441,7 +441,7 @@
       "post": {
         "operationId": "hs_score_entity",
         "summary": "Score one entity at decision time",
-        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is the one the originating run assigned this row, from the same fitted scorecard — a cache of a deterministic fit, not a second model. It can differ in the last bit of the float (measured: 7 of 12 entities identical, the rest by one ULP, never more) because the run scores the whole table at once while this scores one row; the band, the reasons and the ordering are unaffected. Do not compare two scores for exact equality — compare bands. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on (columns must match). Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity.",
+        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is the one the originating run assigned this row, from the same fitted scorecard — a cache of a deterministic fit, not a second model. It can differ in the last bit of the float (measured: 7 of 12 entities identical, the rest by one ULP, never more) because the run scores the whole table at once while this scores one row; the band, the reasons and the ordering are unaffected. Do not compare two scores for exact equality — compare bands. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on. The real requirement is narrower than 'columns must match': the scorecard reads ONLY its own arm features, so extra columns are ignored and a subset carrying every arm feature scores identically - a missing one is a 422 naming the column, never a quiet wrong score. Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity.",
         "tags": [
           "decide"
         ],
@@ -476,7 +476,7 @@
                   },
                   "row": {
                     "type": "object",
-                    "description": "One entity's feature values, same columns as the fitted table."
+                    "description": "One entity's feature values. Supply every column the analysis used, with the same types; EXTRA columns are ignored, so a wider row is fine and a subset is fine as long as it carries them all. A genuinely missing one is refused (422 row_not_scoreable) naming the column - the engine never scores a row it cannot score."
                   },
                   "entity_id": {
                     "type": "string"
@@ -937,7 +937,7 @@
       "post": {
         "operationId": "hs_score_batch",
         "summary": "Score many rows against one scorecard",
-        "description": "Costs ONE DECISION PER ROW that is not refused. Score up to 10,000 rows against a model_ref in one call — for backfills, nightly re-scoring, or replaying a historical cohort. Same arithmetic, same firewall, same band semantics as hs_score_entity; returns one signed Verdict covering every entity. Common mistakes: sending rows with different columns than the fitted table; expecting per-row signatures — there is one signature over the whole Verdict.",
+        "description": "Costs ONE DECISION PER ROW that is not refused. Score up to 10,000 rows against a model_ref in one call — for backfills, nightly re-scoring, or replaying a historical cohort. Same arithmetic, same firewall, same band semantics as hs_score_entity; returns one signed Verdict covering every entity. Common mistakes: sending rows that omit a column the analysis used (extra columns are fine; a missing arm feature is a 422 naming it); expecting per-row signatures — there is one signature over the whole Verdict.",
         "tags": [
           "decide"
         ],
@@ -1551,7 +1551,7 @@
       "post": {
         "operationId": "hs_report_outcome",
         "summary": "Report observed outcomes",
-        "description": "Free; writes YOUR observed outcomes (never fires an action, never retrains). For entities scored under a model_ref, append what actually happened: outcome is a binary (0/1, true/false, yes/no); observed_at is when you observed it; event_id is your idempotency key (send the same id on retry and the row is written once). Outcomes are EVIDENCE for hs_action_evidence and drift signals for hs_drift_status; they never change the scorecard, the band, or the pattern — a refit is an explicit hs_rank_topk with refit_of. Free text is refused (422 outcome_malformed) so this ledger cannot become a transcript store. Best for: closing the loop after acting, so the engine can tell you whether acting worked. Common mistakes: inferring the outcome from the trace or the agent's own judgement — report the real-world binary you observed; sending prose.",
+        "description": "Free; writes YOUR observed outcomes (never fires an action, never retrains). For entities scored under a model_ref, append what actually happened: outcome is a binary (0/1, true/false, yes/no); observed_at is when you observed it; event_id is your idempotency key (send the same id on retry and the row is written once). Outcomes are EVIDENCE for hs_action_evidence and drift signals for hs_drift_status; they never change the scorecard, the band, or the pattern — a refit is an explicit hs_rank_topk with refit_of. Free text is refused (422 outcome_not_binary) so this ledger cannot become a transcript store. Best for: closing the loop after acting, so the engine can tell you whether acting worked. Common mistakes: inferring the outcome from the trace or the agent's own judgement — report the real-world binary you observed; sending prose.",
         "tags": [
           "close"
         ],
@@ -1973,6 +1973,137 @@
         }
       }
     },
+    "/v1/agents/register": {
+      "post": {
+        "operationId": "register_agent",
+        "summary": "Register an agent and receive a samples-only key.",
+        "description": "Mint a hsk_test_ machine key in ONE unauthenticated call — no signup, no email, no card. The key runs the free sample datasets only, consumes no quota, and is safe to print in a log; the restriction is enforced before any upload URL is minted or any byte is read. The response carries a claim_url: a human can open it later, sign in, and the SAME key keeps working against a workspace they own, with every model_ref, reported outcome and drift cycle preserved. Claiming attaches a human to the TENANT, never to the CREDENTIAL — the key stays a test key, and decisions about people stay capped at max_autonomy L0 because a machine credential carries no human principal. A `mode` field in the request body is IGNORED: this endpoint cannot issue a live key.",
+        "tags": [
+          "orient"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": true,
+        "security": [],
+        "x-hs-surface-exempt": {
+          "rules": [
+            "naming",
+            "mcp",
+            "n8n",
+            "python-adapters"
+          ],
+          "reason": "Not a tool: no MCP twin, no run cost, served by a hand-written static route — so the live tools/list leg will never see it, and that leg only fails today because HS_KEY is usually unset. The only unauthenticated operation. n8n is configured through a stored HunterSeekerApi credential and the Python adapters take an already-authenticated Client, so neither has a coherent place for the call you make BEFORE you have a key. Python does in fact reach it, via `hs signup` in the CLI, which the parity script has no leg for. The path stays /v1/agents/register rather than /v1/register-agent because it is live and published in the MCP server instructions agents read, so moving it would break callers in the field."
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "agent_caller": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Your client's name, for the audit label only — unverified, and never used as identity."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "api_key",
+                    "agent_id",
+                    "claim_url",
+                    "mode"
+                  ],
+                  "properties": {
+                    "api_key": {
+                      "type": "string",
+                      "pattern": "^hsk_test_",
+                      "description": "Send as `Authorization: Bearer <api_key>`. Shown once and never retrievable again."
+                    },
+                    "agent_id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "description": "The tenant this registration created. Unchanged by claiming — every model_ref stays attached to it."
+                    },
+                    "claim_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Hand this to a human. Signed, and valid for 30 days."
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": [
+                        "test"
+                      ]
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "next": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many registrations from this source. Reuse the key you already have; it does not expire.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds to wait."
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Registration unavailable. Nothing was created and no key was issued.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/.well-known/jwks.json": {
       "get": {
         "operationId": "jwks",
@@ -2352,6 +2483,9 @@
         "type": "object",
         "properties": {
           "contract": {},
+          "auth": {
+            "description": "How to obtain and use a credential. `register` names the unauthenticated endpoint that returns a samples-only hsk_test_ key."
+          },
           "trust": {},
           "readings": {},
           "examples": {
@@ -2712,6 +2846,15 @@
             "type": "string",
             "description": "Reuse this for the free drill-in tools for 24 hours."
           },
+          "usability": {
+            "type": "string",
+            "enum": [
+              "actionable",
+              "unjudged",
+              "refused"
+            ],
+            "description": "READ THIS FIRST — it is the go/no-go, and gate_verdicts is a diagnostic beside it. \"actionable\": the engine judged this run and vouches for it. \"unjudged\": the engine could not APPLY its bar — an unanswered question, not a negative answer (typically a partitioned run below the row floor, where clearance_frequency.judgeable is 0 and model_ref and verdict are null). \"refused\": the bar was applied and nothing cleared. Act only on \"actionable\". An envelope with no usability field at all predates this contract and must be treated as \"unjudged\", never as actionable."
+          },
           "model_ref": {
             "type": [
               "string",
@@ -3112,6 +3255,14 @@
                     },
                     "reason": {
                       "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "leakage_suspected",
+                        "excluded",
+                        "advisory"
+                      ]
                     }
                   },
                   "required": [
@@ -3125,7 +3276,7 @@
                 "type": "null"
               }
             ],
-            "description": "Columns quarantined as likely target leakage, each with a plain-English reason. NULL means there was no finding (honest-null) — never that leakage was checked and found clean."
+            "description": "Columns the engine removed, each with a plain-English reason and a `status` that says WHICH KIND of removal it was. `leakage_suspected` = evidence something is wrong (a >0.98-AUC proxy, a post-outcome or look-ahead name, a date-like column) — THIS is the one to stop on. `excluded` = an identifier or entity/time key that was never a predictor; routine, and present on almost every real table. `advisory` = NOT removed, a review flag only. NULL means there was no finding (honest-null) - never that leakage was checked and found clean."
           },
           "entity_replication": {
             "anyOf": [
@@ -3319,6 +3470,15 @@
             "type": "string",
             "description": "Reuse this for the free drill-in tools for 24 hours."
           },
+          "usability": {
+            "type": "string",
+            "enum": [
+              "actionable",
+              "unjudged",
+              "refused"
+            ],
+            "description": "READ THIS FIRST — it is the go/no-go, and gate_verdicts is a diagnostic beside it. \"actionable\": the engine judged this run and vouches for it. \"unjudged\": the engine could not APPLY its bar — an unanswered question, not a negative answer (typically a partitioned run below the row floor, where clearance_frequency.judgeable is 0 and model_ref and verdict are null). \"refused\": the bar was applied and nothing cleared. Act only on \"actionable\". An envelope with no usability field at all predates this contract and must be treated as \"unjudged\", never as actionable."
+          },
           "model_ref": {
             "type": [
               "string",
@@ -3719,6 +3879,14 @@
                     },
                     "reason": {
                       "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "leakage_suspected",
+                        "excluded",
+                        "advisory"
+                      ]
                     }
                   },
                   "required": [
@@ -3732,7 +3900,7 @@
                 "type": "null"
               }
             ],
-            "description": "Columns quarantined as likely target leakage, each with a plain-English reason. NULL means there was no finding (honest-null) — never that leakage was checked and found clean."
+            "description": "Columns the engine removed, each with a plain-English reason and a `status` that says WHICH KIND of removal it was. `leakage_suspected` = evidence something is wrong (a >0.98-AUC proxy, a post-outcome or look-ahead name, a date-like column) — THIS is the one to stop on. `excluded` = an identifier or entity/time key that was never a predictor; routine, and present on almost every real table. `advisory` = NOT removed, a review flag only. NULL means there was no finding (honest-null) - never that leakage was checked and found clean."
           },
           "entity_replication": {
             "anyOf": [
@@ -4007,6 +4175,14 @@
                     },
                     "reason": {
                       "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "leakage_suspected",
+                        "excluded",
+                        "advisory"
+                      ]
                     }
                   },
                   "required": [
@@ -4020,7 +4196,7 @@
                 "type": "null"
               }
             ],
-            "description": "Columns quarantined as likely target leakage, each with a plain-English reason. NULL means there was no finding (honest-null) — never that leakage was checked and found clean."
+            "description": "Columns the engine removed, each with a plain-English reason and a `status` that says WHICH KIND of removal it was. `leakage_suspected` = evidence something is wrong (a >0.98-AUC proxy, a post-outcome or look-ahead name, a date-like column) — THIS is the one to stop on. `excluded` = an identifier or entity/time key that was never a predictor; routine, and present on almost every real table. `advisory` = NOT removed, a review flag only. NULL means there was no finding (honest-null) - never that leakage was checked and found clean."
           },
           "gate_verdicts": {
             "type": "array",
@@ -4341,6 +4517,15 @@
             "type": "string",
             "const": "hs.brief.v1"
           },
+          "usability": {
+            "type": "string",
+            "enum": [
+              "actionable",
+              "unjudged",
+              "refused"
+            ],
+            "description": "READ THIS FIRST. \"actionable\": the engine judged this run and vouches for it. \"unjudged\": the engine could not APPLY its bar — an unanswered question, not a negative answer. \"refused\": the bar was applied and nothing cleared. Act only on \"actionable\"; a brief with no usability field predates this contract and must be read as \"unjudged\"."
+          },
           "provenance": {
             "type": "object",
             "properties": {
@@ -4464,6 +4649,10 @@
                         },
                         "reason": {
                           "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "description": "The quarantine tier, carried from the ranking: \"leakage_suspected\" is a reason to stop; \"excluded\" is a routine identifier/date column and is not."
                         }
                       },
                       "required": [
@@ -4479,7 +4668,29 @@
                 ]
               },
               "honest_empty": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether the engine isolated a driver combination. NOT a statement about whether this run may be acted on — read `usability` for that."
+              },
+              "clearance_frequency": {
+                "type": "object",
+                "properties": {
+                  "cleared": {
+                    "type": "number"
+                  },
+                  "of": {
+                    "type": "number"
+                  },
+                  "judgeable": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "cleared",
+                  "of",
+                  "judgeable"
+                ],
+                "additionalProperties": false,
+                "description": "Present only when the ranking was partitioned. `judgeable` counts the draws the bar could actually be applied to — 0 means the question could not be asked, which is not the same as a no."
               }
             },
             "required": [
@@ -4570,10 +4781,15 @@
           },
           "honest_empty_note": {
             "type": "string"
+          },
+          "unjudged_note": {
+            "type": "string",
+            "description": "Present iff usability is not \"actionable\". The prose form of the caveat, so an agent reading the JSON gets the same sentence the markdown renders over the drivers."
           }
         },
         "required": [
           "schema",
+          "usability",
           "provenance",
           "outcome",
           "trust",
