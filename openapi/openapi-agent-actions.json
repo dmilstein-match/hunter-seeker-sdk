@@ -944,7 +944,7 @@
             "n8n",
             "python-adapters"
           ],
-          "reason": "Not a tool: no MCP twin, no run cost, served by a hand-written static route — so the live tools/list leg will never see it, and that leg only fails today because HS_KEY is usually unset. The only unauthenticated operation. n8n is configured through a stored HunterSeekerApi credential and the Python adapters take an already-authenticated Client, so neither has a coherent place for the call you make BEFORE you have a key. Python does in fact reach it, via `hs signup` in the CLI, which the parity script has no leg for. The path stays /v1/agents/register rather than /v1/register-agent because it is live and published in the MCP server instructions agents read, so moving it would break callers in the field."
+          "reason": "Not a tool: no MCP twin, no run cost, served by a hand-written static route — so the live tools/list leg will never see it, and that leg only fails today because HS_KEY is usually unset. The only unauthenticated operation. n8n is configured through a stored HunterSeekerApi credential and the Python adapters take an already-authenticated Client, so neither has a coherent place for the call you make BEFORE you have a key. Python does in fact reach it, via `hs signup` in the CLI, which the parity script has no leg for. The path stays /v1/agents/register (relative to servers[0].url) rather than /v1/register-agent because it is live and every surface that hands it to a caller cites it as the absolute REGISTER_URL, so moving it would break callers in the field."
         },
         "requestBody": {
           "required": false,
