@@ -55,6 +55,30 @@ def test_a_datetime_ts_reaches_the_wire_as_iso_8601():
     assert _Capture.bodies[0]["row"]["ts"] == "2026-03-04T10:00:00+00:00" and _Capture.bodies[0]["row"]["agent_prior_n"] == 1
     assert _Capture.bodies[1]["row"]["ts"] == "2026-03-05"
 
+def test_a_missing_value_reaches_the_wire_as_null():
+    """`df.to_dict('records')` writes NaN, pandas NA or NaT for a missing cell. json.dumps wrote NaN
+    as a bare token, which is not JSON, and the product answered 422 'The request body is not valid
+    JSON.' on exactly the rows the NaN-group fix covers; NA and NaT died in json.dumps."""
+    from hunter_seeker import Ledger, gate
+    srv = HTTPServer(("127.0.0.1", 0), _Capture); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    hs = Client(api_key="hsk_test_abc", base_url=f"http://127.0.0.1:{srv.server_port}")
+    _Capture.bodies = []
+    na = type("NAType", (), {})()                  # pandas' NA, matched by type name
+    d = gate(hs, "mr1_x", Ledger(), {"run_id": "r1", "ts": "2026-01-01T00:00:00Z", "agent": float("nan"),
+                                     "task": na, "latency": float("nan")}, control_fraction=0.0)
+    srv.shutdown()
+    row = _Capture.bodies[0]["row"]
+    assert row["agent"] is None and row["task"] is None and row["latency"] is None
+    assert d.row_scored["agent"] is None and d.row_scored["latency"] is None
+
+def test_a_nan_anywhere_else_is_refused_before_the_request():
+    """No request is made (nothing listens on port 9): the ValueError is json.dumps', not a 422."""
+    hs = Client(api_key="hsk_test_abc", base_url="http://127.0.0.1:9")
+    try:
+        hs.score_entity("mr1_x", {"latency": float("nan")}, subject_kind="event"); assert False
+    except ValueError as e:
+        assert "JSON compliant" in str(e)
+
 def test_anything_else_json_cannot_encode_still_raises():
     """Only dates are converted; a Decimal is not str()-ed into a value the engine would misread."""
     from decimal import Decimal

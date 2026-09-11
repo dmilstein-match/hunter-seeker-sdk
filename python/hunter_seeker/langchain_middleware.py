@@ -20,7 +20,9 @@ before the model is called, with the Decision on the state under `hs_decision`, 
 route the run to a human or a stronger model instead of letting this agent proceed. On "proceed"
 or "default" the run continues; the Decision is still on the state. Every run is recorded in the
 ledger exactly once with its outcome unknown — an intercepted run at the gate, every other run in
-`after_agent` — so each invoke needs its own `run_id`: `Ledger.append` refuses one it already holds.
+`after_agent` — so each invoke needs its own `run_id`: `Ledger.append` refuses one it already holds,
+and `before_agent` makes that refusal (and refuses a `ts` the ledger cannot parse) up front, before
+the decision is billed and before the model runs.
 
 With a checkpointer, the Decision is stored in the checkpoint. LangGraph warns when it deserializes
 a type it was not told about, and blocks it under `LANGGRAPH_STRICT_MSGPACK=true`; add
@@ -77,6 +79,9 @@ class LoopMiddleware(AgentMiddleware):
     @hook_config(can_jump_to=["end"])
     def before_agent(self, state: Mapping[str, Any], runtime: Any) -> Optional[Dict[str, Any]]:
         row = dict(self.row_from_state(state, runtime))
+        # Every refusal the append below or in after_agent would make (a run_id already recorded, a
+        # ts the ledger cannot parse) is made HERE, before gate() bills a decision and the model runs.
+        self.ledger._prepare(row)
         d = gate(self.hs, self.model_ref, self.ledger, row, **self.gate_kwargs)
         if d.action != "intercept":
             # Cleared explicitly: on a checkpointed thread the state keeps an earlier run's

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import numbers
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -153,6 +154,27 @@ def test_group_binding_is_explicit():
 ])
 def test_parse_ts(value, expect):
     assert parse_ts(value) == expect
+
+
+class NaTType(datetime):
+    """Stands in for pandas' NaT, so pandas stays optional: a datetime subclass, matched by type name."""
+
+    def __str__(self):
+        return "NaT"
+
+
+def test_a_nat_timestamp_is_null_not_a_time():
+    """`df.to_dict('records')` writes NaT for a missing datetime64 cell, and NaT IS a datetime. The
+    engine drops a NULL-time row before any window; parse_ts returned NaT as a time, so the ledger
+    took the row and counted it as an earlier peer in every other run's priors."""
+    nat = NaTType(2000, 1, 1)
+    assert parse_ts(nat) is None
+    with pytest.raises(ValueError, match="ISO-8601"):
+        Ledger().append({"run_id": "a", "ts": nat, "agent": "x", "failed": 1})
+    ledger = Ledger()
+    ledger.append({"run_id": "b", "ts": "2026-01-01T00:00:00Z", "agent": "x", "failed": 0})
+    p = ledger.priors({"run_id": "c", "ts": nat, "agent": "x"})
+    assert p["agent_prior_n"] is None and p["agent_prior_outcome_rate"] is None
 
 
 # ── the control arm ────────────────────────────────────────────────────────────────────────
@@ -309,9 +331,133 @@ def test_a_nan_group_value_is_null_not_a_group_called_nan():
     p = ledger.priors({"run_id": "c", "ts": "2026-01-01T00:02:00Z", "agent": nan, "task": "t", "tool": "u"})
     assert p["agent_prior_n"] is None and p["agent_prior_outcome_rate"] is None
     assert p["task_prior_n"] == 2 and p["tool_prior_n"] == 2
-    # the own-run exclusion follows the same rule: a NaN-agent row is in no table, so re-scoring it
-    # under its own id with the string "nan" subtracts nothing (it used to give -1)
-    assert ledger.priors({"run_id": "a", "ts": "2026-01-01T00:05:00Z", "agent": "nan"})["agent_prior_n"] == 0
+    # the string "nan" is NULL too: pandas reads that CSV cell as NaN. It was a group, and re-scoring
+    # run a under it subtracted a's own row from an empty table (-1)
+    assert ledger.priors({"run_id": "a", "ts": "2026-01-01T00:05:00Z", "agent": "nan"})["agent_prior_n"] is None
+
+
+def test_the_own_run_exclusion_uses_the_rule_that_built_the_table():
+    """A missing group value puts a run in no table, so re-scoring it under a key that prints the same
+    must subtract nothing. pandas' NaT prints as 'NaT', which is not a CSV NA token."""
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": NaTType(2000, 1, 1), "failed": 1})
+    assert ledger.priors({"run_id": "a", "ts": "2026-01-01T00:05:00Z", "agent": "NaT"})["agent_prior_n"] == 0
+
+
+def _assert_missing_group_is_null(missing):
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": missing, "task": "t", "tool": "u", "failed": 1})
+    ledger.append({"run_id": "b", "ts": "2026-01-01T00:01:00Z", "agent": missing, "task": "t", "tool": "u", "failed": 0})
+    p = ledger.priors({"run_id": "c", "ts": "2026-01-01T00:02:00Z", "agent": missing, "task": "t", "tool": "u"})
+    assert p["agent_prior_n"] is None and p["agent_prior_outcome_rate"] is None
+    assert p["task_prior_n"] == 2 and p["tool_prior_n"] == 2
+
+
+@pytest.mark.parametrize("type_name", ["NAType", "NaTType"])
+def test_pandas_na_and_nat_group_values_are_null(type_name):
+    """pandas stays optional: `_missing` matches its NA and NaT by type name."""
+    _assert_missing_group_is_null(type(type_name, (), {})())
+
+
+def test_a_nan_that_is_not_a_python_float_is_null():
+    """numpy.float32('nan') is a numbers.Real but not a float subclass; this stands in for it."""
+    class Float32Like:
+        def __float__(self):
+            return float("nan")
+    numbers.Real.register(Float32Like)
+    _assert_missing_group_is_null(Float32Like())
+
+
+@pytest.mark.parametrize("token", ["", "NA", "None", "null", "n/a", "nan", "<NA>", "#N/A"])
+def test_a_csv_na_token_group_value_is_null_as_the_engine_reads_it(token):
+    """The engine reads the fit table with `pd.read_csv` defaults, which turn exactly these cells into
+    NaN, so their runs had NULL priors at fit. The ledger counted them as a group."""
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": token, "task": "t", "tool": "u", "failed": 1})
+    ledger.append({"run_id": "b", "ts": "2026-01-01T00:01:00Z", "agent": token, "task": "t", "tool": "u", "failed": 0})
+    for rid, task_n in (("b", 1), ("c", 2)):           # a run in the ledger, and one that is not
+        p = ledger.priors({"run_id": rid, "ts": "2026-01-01T00:02:00Z", "agent": token, "task": "t", "tool": "u"})
+        assert p["agent_prior_n"] is None and p["agent_prior_outcome_rate"] is None
+        assert p["task_prior_n"] == task_n
+
+
+@pytest.mark.parametrize("value", [" NA", "na", "none", "N/a "])
+def test_a_near_miss_of_a_csv_na_token_is_a_real_group(value):
+    """pandas matches the exact cell text: no strip, no case folding."""
+    ledger = Ledger()
+    ledger.append({"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": value, "failed": 1})
+    assert ledger.priors({"run_id": "c", "ts": "2026-01-01T00:02:00Z", "agent": value})["agent_prior_n"] == 1
+
+
+def test_the_csv_na_tokens_are_pandas_defaults():
+    """Catches a pandas bump that changes the default NA set, where pandas is installed."""
+    parsers = pytest.importorskip("pandas._libs.parsers")
+    from hunter_seeker.loop import _CSV_NA
+    assert _CSV_NA == set(parsers.STR_NA_VALUES)
+
+
+@pytest.mark.parametrize("unknown", [float("nan"), type("NAType", (), {})()], ids=["nan", "pandas-NA"])
+def test_a_missing_outcome_is_unknown_not_refused(unknown):
+    """`df.to_dict('records')` writes NaN (or pandas NA) for the outcome of a run still in flight. The
+    ledger refused it, so extend() on a ledger with unlabelled runs raised."""
+    ledger = Ledger()
+    ledger.extend([{"run_id": "a", "ts": "2026-01-01T00:00:00Z", "agent": "x", "failed": 1.0},
+                   {"run_id": "b", "ts": "2026-01-01T00:01:00Z", "agent": "x", "failed": unknown}])
+    assert ledger.rows[1]["failed"] is None
+    p = ledger.priors({"run_id": "c", "ts": "2026-01-01T00:02:00Z", "agent": "x"})
+    assert p["agent_prior_n"] == 1 and p["agent_prior_outcome_rate"] == 1.0
+
+
+def _batch():
+    return [{"run_id": f"r{i}", "ts": f"2026-01-01T00:0{i}:00Z", "agent": "x", "failed": i % 2} for i in range(5)]
+
+
+@pytest.mark.parametrize("spoil, match", [
+    (lambda rows: rows[3].update(ts="2026-01-01 00:03:00 +02:00"), "ISO-8601"),
+    (lambda rows: rows[4].update(failed="done"), "observed outcome"),
+    (lambda rows: rows[2].update(run_id="r_old"), "already in the ledger"),
+    (lambda rows: rows[4].update(run_id="r1"), "twice in this batch"),
+    (lambda rows: rows[3].pop("ts"), "missing"),
+], ids=["bad-ts", "bad-outcome", "run-already-held", "run-twice-in-batch", "no-ts-column"])
+def test_a_refused_batch_leaves_the_ledger_unchanged(spoil, match):
+    """extend is all or nothing. It kept the rows before the bad one, and since a run_id is recorded
+    once, re-running the corrected batch then failed on the first of them."""
+    ledger = Ledger()
+    ledger.append({"run_id": "r_old", "ts": "2025-12-31T00:00:00Z", "agent": "x", "failed": 1})
+    later = {"run_id": "n", "ts": "2026-02-01T00:00:00Z", "agent": "x"}
+    assert ledger.priors(later)["agent_prior_n"] == 1
+    rows = _batch()
+    spoil(rows)
+    with pytest.raises(ValueError, match=match):
+        ledger.extend(rows)
+    assert [r["run_id"] for r in ledger.rows] == ["r_old"]
+    assert ledger.priors(later)["agent_prior_n"] == 1
+    ledger.extend(_batch())                            # the corrected batch, whole, on the same ledger
+    assert [r["run_id"] for r in ledger.rows] == ["r_old", "r0", "r1", "r2", "r3", "r4"]
+    assert ledger.priors(later)["agent_prior_n"] == 6
+
+
+def test_an_integer_run_id_is_observed_by_the_same_id():
+    """df.to_dict('records') yields int ids for an integer column."""
+    ledger = Ledger()
+    ledger.append({"run_id": 7, "ts": "2026-01-01T00:00:00Z", "agent": "a", "failed": None})
+    ledger.observe(7, 1)
+    assert ledger.rows[0]["failed"] == 1
+
+
+def test_an_integer_run_id_never_sees_its_own_label():
+    ledger = Ledger()
+    ledger.append({"run_id": 7, "ts": "2026-01-01T00:00:00Z", "agent": "a", "failed": 1})
+    ledger.append({"run_id": 8, "ts": "2026-01-02T00:00:00Z", "agent": "a", "failed": 0})
+    p = ledger.priors({"run_id": 7, "ts": "2026-01-03T00:00:00Z", "agent": "a"})   # later than run 7's ts
+    assert p["agent_prior_n"] == 1 and p["agent_prior_outcome_rate"] == 0.0
+
+
+def test_an_integer_and_a_string_run_id_are_the_same_run():
+    ledger = Ledger()
+    ledger.append({"run_id": 7, "ts": "2026-01-01T00:00:00Z", "agent": "a", "failed": None})
+    with pytest.raises(ValueError, match="already in the ledger"):
+        ledger.append({"run_id": "7", "ts": "2026-01-04T00:00:00Z", "agent": "a", "failed": 0})
 
 
 def test_gate_scores_a_control_run_but_returns_default():
@@ -391,3 +537,26 @@ def test_era_lock_refuses_ledger_rows_that_do_not_carry_the_priors():
         era_lock(pattern, ledger.rows)
     r = era_lock(pattern, [ledger.with_priors(x) for x in ledger.rows])
     assert r["clock_like"] or r["era_locked"]
+    # a one-shot iterable is read once: 2.2.2 consumed it, then called every feature absent
+    for lazy in ((ledger.with_priors(x) for x in ledger.rows), map(ledger.with_priors, ledger.rows)):
+        assert era_lock(pattern, lazy) == r
+
+
+COUNTER_ABOVE_97 = [{"feature": "agent_prior_n", "direction": "higher", "threshold": 97, "operator": ">",
+                     "missing_values": "excluded"}]
+
+
+def test_a_feature_on_some_rows_is_not_absent():
+    """Absent means absent from EVERY row: a first row without the feature (a run logged before it
+    existed) must not refuse the rest."""
+    rows = _rows_with_counter()
+    rows[0] = {"run_id": rows[0]["run_id"], "ts": rows[0]["ts"]}
+    r = era_lock(COUNTER_ABOVE_97, rows)
+    assert r["conditions"][0]["verdict"] == "CLOCK-LIKE" and r["clock_like"]
+
+
+@pytest.mark.parametrize("empty", [[], iter([])], ids=["list", "iterator"])
+def test_era_lock_refuses_no_rows(empty):
+    """Graded over nothing, every condition is 'ok' and both flags are false: a clean pattern."""
+    with pytest.raises(ValueError, match="no rows"):
+        era_lock(COUNTER_ABOVE_97, empty)

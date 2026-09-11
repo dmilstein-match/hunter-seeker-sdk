@@ -86,6 +86,19 @@ def _missing(v: Any) -> bool:
     return isinstance(v, numbers.Real) and not isinstance(v, numbers.Integral) and math.isnan(v)
 
 
+# pandas' default `na_values` for a string cell (`pandas._libs.parsers.STR_NA_VALUES`, pandas 2.1.4,
+# the engine's pin). Every fit table reaches the engine as CSV and is read with `pd.read_csv`
+# defaults, so a group cell holding exactly one of these is NULL there. Matched exactly, as pandas
+# matches the cell text: no strip, no case folding (' NA' and 'na' are real groups to the engine).
+_CSV_NA = frozenset({"", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan", "1.#IND",
+                     "1.#QNAN", "<NA>", "N/A", "NA", "NULL", "NaN", "None", "n/a", "nan", "null"})
+
+
+def _missing_group(v: Any) -> bool:
+    """A group value the engine reads as NULL: `_missing`, or a string its CSV read turns into NaN."""
+    return _missing(v) or (isinstance(v, str) and v in _CSV_NA)
+
+
 # ── timestamps ──────────────────────────────────────────────────────────────────────────────
 #
 # The engine parses through ONE format chain (duckdb_utils._TIMESTAMP_FORMATS) and compares at
@@ -111,7 +124,7 @@ _EPOCH_MS = (10**11, 10**13)
 
 def parse_ts(value: Any) -> Optional[datetime]:
     """A naive-UTC datetime at microsecond resolution, or None when this cannot parse it."""
-    if value is None:
+    if _missing(value):          # before the datetime branch: pandas' NaT IS a datetime subclass
         return None
     if isinstance(value, datetime):
         dt = value
@@ -151,7 +164,7 @@ def parse_ts(value: Any) -> Optional[datetime]:
 # ── the ledger ──────────────────────────────────────────────────────────────────────────────
 
 def _binary_or_none(value: Any, where: str) -> Optional[int]:
-    if value is None:
+    if _missing(value):          # None, NaN, pandas NA: not observed yet, as the engine reads them
         return None
     if isinstance(value, bool):
         return int(value)
@@ -172,7 +185,8 @@ class Ledger:
     another run's priors, because that is what the fit saw — the engine fits on a fully labelled
     table, and the decision-time equivalent is "the earlier runs whose outcome I know".
     `append` refuses a run_id the ledger already holds: the outcome of a recorded run is filled
-    in with `observe`, never with a second row.
+    in with `observe`, never with a second row. `extend` is all or nothing: a refused batch leaves
+    the ledger unchanged, so fix the row and pass the whole batch again.
     """
 
     def __init__(self, *, identifier: str = "run_id", time_axis: str = "ts",
@@ -203,7 +217,9 @@ class Ledger:
         self._tables: Dict[Tuple[str, str], Tuple[int, Tuple[List[datetime], List[int]]]] = {}
 
     # -- writing -------------------------------------------------------------------------------
-    def append(self, row: Mapping[str, Any]) -> None:
+    def _prepare(self, row: Mapping[str, Any], pending: Iterable[str] = ()) -> Tuple[Dict[str, Any], datetime, str]:
+        """Every refusal `append` makes, with nothing written: (the row to store, its time, its key).
+        `pending` holds the keys of rows earlier in the same batch."""
         for col in (self.identifier, self.time_axis):
             if col not in row:
                 raise ValueError(f"row is missing the {col!r} column")
@@ -219,21 +235,41 @@ class Ledger:
                 f"run {row[self.identifier]!r} is already in the ledger. One row per run: fill in its "
                 "outcome with observe(), or give a new run a new run_id. A second row would stay "
                 "unlabelled beside the first and reach the fit as a duplicate entity.")
+        if run_key in pending:
+            raise ValueError(f"run {row[self.identifier]!r} appears twice in this batch. One row per run.")
         r = dict(row)
         r[self.outcome] = _binary_or_none(r.get(self.outcome), f"run {r[self.identifier]!r}")
+        return r, t, run_key
+
+    def _commit(self, r: Dict[str, Any], t: datetime, run_key: str) -> None:
         i = len(self.rows)
         self.rows.append(r)
         self._times.append(t)
         self._by_id[run_key] = i
         for col in self.groups.values():
-            if not _missing(r.get(col)):                       # NaN is NULL to the engine, not a group
+            if not _missing_group(r.get(col)):                 # NULL to the engine, not a group
                 self._by_group.setdefault((col, str(r[col])), []).append(i)
+
+    def append(self, row: Mapping[str, Any]) -> None:
+        self._commit(*self._prepare(row))
         self._gen += 1
         self._tables.clear()
 
     def extend(self, rows: Iterable[Mapping[str, Any]]) -> None:
-        for r in rows:
-            self.append(r)
+        """All or nothing: every row is checked before any is written, so a refused batch leaves the
+        ledger unchanged. Appending row by row kept the rows before the bad one, and re-running the
+        corrected batch then failed on the first of them as a duplicate."""
+        prepared: List[Tuple[Dict[str, Any], datetime, str]] = []
+        seen: set = set()
+        for row in rows:
+            p = self._prepare(row, seen)
+            seen.add(p[2])
+            prepared.append(p)
+        for p in prepared:
+            self._commit(*p)
+        if prepared:
+            self._gen += 1
+            self._tables.clear()
 
     def observe(self, run_id: str, outcome: Any) -> None:
         """Fill in the observed outcome for a run already in the ledger."""
@@ -258,7 +294,7 @@ class Ledger:
         for role, col in self.groups.items():
             n_name, rate_name = prior_feature_names([role])
             value = row.get(col)
-            if t is None or _missing(value):
+            if t is None or _missing_group(value):
                 out[n_name] = out[rate_name] = None
                 continue
             key = str(value)
@@ -268,7 +304,7 @@ class Ledger:
             if own is not None:                                # a run never sees its own label
                 r = self.rows[own]
                 # the same missing-value rule that decided what went into the table
-                if (not _missing(r.get(col)) and str(r[col]) == key and r[self.outcome] is not None
+                if (not _missing_group(r.get(col)) and str(r[col]) == key and r[self.outcome] is not None
                         and self._times[own] < t):
                     n -= 1
                     total -= r[self.outcome]
@@ -362,7 +398,9 @@ def gate(hs: Any, model_ref: str, ledger: Ledger, row: Mapping[str, Any], *,
     needs its band — but its action is always "default".
     """
     run_id = row.get(ledger.identifier)
-    scored_row = ledger.with_priors(row)
+    # NaN, pandas NA and NaT go out as JSON null, which the engine reads as NULL. json.dumps writes
+    # NaN as a bare token that is not JSON (the product answers 422), and NA/NaT do not encode at all.
+    scored_row = {k: (None if _missing(v) else v) for k, v in ledger.with_priors(row).items()}
     resp = hs.score_entity(model_ref, scored_row, subject_kind=subject_kind, entity_id=str(run_id),
                            acknowledge_decision_support=acknowledge_decision_support)
     d = decide(resp.get("entity") or {}, resp.get("verdict") or {}, run_id=run_id,
@@ -420,7 +458,7 @@ def _spearman(x: Sequence[float], y: Sequence[float]) -> Optional[float]:
     return sum((a - mx) * (b - my) for a, b in zip(rx, ry)) / math.sqrt(sxx * syy)
 
 
-def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str, Any]], *,
+def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Iterable[Mapping[str, Any]], *,
              time_axis: str = "ts", cutoff: Any = None, bins: int = 6) -> Dict[str, Any]:
     """Does this pattern describe the problem, or the calendar?
 
@@ -428,14 +466,18 @@ def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str
     you sent the engine (with the prior features attached — `Ledger.with_priors` on each row
     reproduces them; `Ledger.rows` alone does not carry them). Returns per-condition verdicts,
     `era_locked` and `clock_like`; a pattern is clean only when BOTH are false. Raises ValueError
-    when a condition's feature is on none of the rows, because a condition on a missing feature
-    grades 'ok' by construction.
+    on no rows, or when a condition's feature is on none of the rows, because a condition graded
+    over nothing, or on a missing feature, grades 'ok' by construction.
 
     Two tests. FORWARD (needs `cutoff`): firing rate on rows before the cutoff vs after — a
     condition that fires on the fit era and never after is DEAD. IN-FIT (no cutoff needed):
     firing rate across time bins inside the window, and the rank correlation of the raw feature
     against time — a feature that IS a clock is CLOCK-LIKE whatever it is called.
     """
+    rows = list(rows)            # read more than once below: a generator would be empty the second time
+    if not rows:
+        raise ValueError("era_lock got no rows: every condition would grade 'ok' by construction. "
+                         "Pass [ledger.with_priors(r) for r in ledger.rows].")
     timed = sorted(((t, r) for t, r in ((parse_ts(r.get(time_axis)), r) for r in rows) if t is not None),
                    key=lambda tr: tr[0])
     cut = parse_ts(cutoff) if cutoff is not None else None
@@ -443,14 +485,13 @@ def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str
     fit = [r for _, r in fit_timed]
     hold = [r for t, r in timed if cut is not None and t >= cut]
 
-    if rows:
-        present = set().union(*(r.keys() for r in rows))
-        absent = sorted({c["feature"] for c in conditions} - present)
-        if absent:
-            raise ValueError(
-                f"feature(s) {absent} absent from every row: a condition on a missing feature grades "
-                "'ok' by construction. The ledger does not store the trace@1 priors; pass "
-                "[ledger.with_priors(r) for r in ledger.rows].")
+    present = set().union(*(r.keys() for r in rows))
+    absent = sorted({c["feature"] for c in conditions} - present)
+    if absent:
+        raise ValueError(
+            f"feature(s) {absent} absent from every row: a condition on a missing feature grades "
+            "'ok' by construction. The ledger does not store the trace@1 priors; pass "
+            "[ledger.with_priors(r) for r in ledger.rows].")
 
     results, verdicts = [], []
     for c in conditions:

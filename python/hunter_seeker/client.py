@@ -58,7 +58,10 @@ class Client:
     # -- transport ---------------------------------------------------------- #
     def _call(self, path: str, body: Optional[Mapping[str, Any]] = None, *, method: str = "POST",
               idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        data = json.dumps(body or {}, default=_json_default).encode() if method == "POST" else None
+        # allow_nan=False: json.dumps otherwise writes NaN as a bare token that is not JSON, and the
+        # product answers 422 "The request body is not valid JSON." Refused here, before the request.
+        data = (json.dumps(body or {}, default=_json_default, allow_nan=False).encode()
+                if method == "POST" else None)
         req = urllib.request.Request(self.base + path, data=data, method=method, headers={
             "authorization": self._auth, "content-type": "application/json",
             "user-agent": f"hunter-seeker-python/{__version__}",

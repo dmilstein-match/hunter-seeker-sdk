@@ -21,17 +21,20 @@ One `LoopSession` per agent run. It listens to three hook events — `PreToolUse
      them (`session.tokens_in = ...`) before `Stop` fires, or leave them None.
   2. RECORDS the run in the ledger at `Stop`, with the outcome unknown (None). The outcome is
      yours to observe later; nothing here infers it from the transcript. One session per run_id:
-     `Ledger.append` refuses a run_id it already holds.
+     `Ledger.append` refuses a run_id it already holds, and the constructor refuses one already in
+     the ledger, or a `ts` it cannot parse, before `query()` starts rather than at `Stop`.
   3. GATES at `Stop` when a `model_ref` is given, AFTER recording: computes the priors from the
      ledger, scores the finished run (off the event loop), and hands the `Decision` to
      `on_decision`. The hook itself returns `{}` — at `Stop` the run is already over, so
      "intercept" means *do not auto-approve its result*, and what that means (hold the PR, route
      to review, re-run on a stronger model) is the harness's policy, not this module's.
      If the gate fails (an engine 4xx/5xx, a timeout, `MissingSafeguard`) the run is still in the
-     ledger, `decision` stays None and `gate_error` holds the exception. The Claude Agent SDK turns
-     a hook exception into a control error and carries on, so read `gate_error` after `query()`:
-     `decision is None and gate_error is not None` means apply your default policy, never
-     auto-approve.
+     ledger, `decision` stays None and `gate_error` holds the exception. If the ledger refuses the
+     row at `Stop` (a run_id another session recorded after this one was built) the run is neither
+     recorded nor gated: `recorded` is False and `gate_error` holds the ValueError. The Claude
+     Agent SDK turns a hook exception into a control error and carries on, so read `gate_error`
+     after `query()`: `decision is None and gate_error is not None` means apply your default
+     policy, never auto-approve.
 
 `PostToolUseFailure` needs claude-agent-sdk >= 0.1.26 (the extra's floor), and a Claude Code CLI that
 emits it if you point `cli_path` at your own; below that, `errors` reads 0 on every run.
@@ -86,6 +89,9 @@ class LoopSession:
         self.decision: Optional[Decision] = None
         self.gate_error: Optional[BaseException] = None
         self.recorded = False
+        # Refused here, before query() starts, rather than at Stop after the run has been paid for:
+        # a run_id the ledger already holds, or a ts it cannot parse, is certain to fail there.
+        ledger._prepare(self.row())
 
     # -- the row -------------------------------------------------------------------------------
     def row(self) -> Dict[str, Any]:
@@ -128,7 +134,11 @@ class LoopSession:
         row = self.row()
         # Recorded FIRST, so the run's telemetry survives a gate that raises. The row is unlabelled
         # and a run's priors exclude its own id, so gating after the append scores the same priors.
-        self.ledger.append(row)
+        try:
+            self.ledger.append(row)
+        except Exception as e:
+            self.gate_error = e      # neither recorded nor gated; the SDK swallows what we raise
+            raise
         self.recorded = True         # also stops a later Stop re-billing a failed gate
         if self.model_ref:
             try:
