@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import json
 import math
 import numbers
 import re
@@ -330,6 +331,118 @@ class Ledger:
     def with_priors(self, row: Mapping[str, Any]) -> Dict[str, Any]:
         return {**row, **self.priors(row)}
 
+    # -- what the loop decided, and what it adds up to ----------------------------------------
+
+    #: The six columns a Decision leaves on a row. Stripped again by `fit_rows`.
+    DECISION_COLUMNS = ("hs_model_ref", "hs_band", "hs_autonomy", "hs_action", "hs_control",
+                        "hs_verdict_id")
+
+    def record_decision(self, run_id: Any, decision: "Decision") -> None:
+        """Write a Decision's facts onto a run already in the ledger."""
+        # `_by_id` maps the run key to its INDEX, not to the row — same as `observe` above.
+        # Treating it as the row made this method raise `'int' object has no attribute 'update'`
+        # on every call it did not refuse, and the only test covered the not-found branch, so a
+        # method that could never succeed sat behind a green suite.
+        i = self._by_id.get(str(run_id))
+        if i is None:
+            raise KeyError(f"run {run_id!r} is not in the ledger")
+        self.rows[i].update(_decision_columns(decision))
+
+    def append_decision(self, row: Mapping[str, Any], decision: "Decision") -> None:
+        """Append a new run WITH its decision in one step — what a harness does at end of run.
+
+        The outcome is left unset on purpose: it is not known yet, and a row that carries a
+        decision but no outcome is exactly what `evidence()` must ignore until you observe one.
+        """
+        r = dict(row)
+        r.setdefault(self.outcome, None)
+        r.update(_decision_columns(decision))
+        self.append(r)
+
+    def evidence(self, *, model_ref: Optional[str] = None, n_min: int = 30,
+                 small_n_below: int = 100) -> Dict[str, Any]:
+        """Did acting on the band change the outcome? Acted vs control, WITHIN the act band.
+
+        THIS IS THE NUMBER THE ENGINE CANNOT GIVE YOU. `hs_action_evidence` splits on lever
+        ATTESTATION — acted means a compliant `hs_attest_action` — so a routing decision, which
+        has no lever_token, never reaches its acted cell, and everything else lands in its
+        comparison arm: refused rows, escalated rows, your control arm, and entities nobody
+        looked at. That comparison answers a different question than the one you asked.
+
+        Here both cells are drawn from the SAME band. Treated: band `act`, not held out, and the
+        loop actually acted on it. Control: band `act`, held out by `control_arm`, scored and
+        recorded but never acted on. That is the contrast the control arm exists to make.
+
+        Floors and interval match the engine's: `live` is None until each cell has `n_min` rows
+        with a known outcome, `small_n` is True below `small_n_below`, and the interval is
+        Newcombe on the difference (control − treated).
+
+        NOTE THE SIGN. This reports control MINUS treated, so on an adverse outcome a positive
+        number means acting helped. `hs_action_evidence.diff` is the other way round (acted minus
+        not-acted). The two are otherwise the same construction — verified equal to within 5e-9 —
+        but placed side by side without reading the field names, an improvement looks like a
+        regression.
+        """
+        def cell(pred) -> Dict[str, Any]:
+            rows = [r for r in self.rows
+                    if r.get(self.outcome) is not None and pred(r)
+                    and (model_ref is None or r.get("hs_model_ref") == model_ref)]
+            n = len(rows)
+            k = sum(int(r[self.outcome]) for r in rows)
+            return {"n": n, "outcome_rate": (k / n) if n else None}
+
+        # `action != "default"` rather than `== "intercept"`. On a DESIRABLE outcome a certified
+        # row is one to let through, so `decide()` returns "proceed" — keying on "intercept"
+        # left the treated cell permanently empty for every desirable-outcome loop, which is
+        # half of them, and `live` then stayed None forever with nothing saying why.
+        treated = cell(lambda r: r.get("hs_band") == "act" and not _as_bool(r.get("hs_control"))
+                       and r.get("hs_action") not in (None, "default"))
+        control = cell(lambda r: r.get("hs_band") == "act" and _as_bool(r.get("hs_control")))
+        out: Dict[str, Any] = {
+            "model_ref": model_ref, "treated": treated, "control": control, "live": None,
+            "live_floor": {"n_min": n_min, "small_n_below": small_n_below},
+        }
+        if treated["n"] >= n_min and control["n"] >= n_min:
+            p1, p2 = control["outcome_rate"], treated["outcome_rate"]
+            lo, hi = _newcombe(p1, control["n"], p2, treated["n"])
+            out["live"] = {"difference_control_minus_treated": p1 - p2, "ci95": [lo, hi],
+                           "small_n": min(treated["n"], control["n"]) < small_n_below}
+        return out
+
+    def fit_rows(self) -> List[Dict[str, Any]]:
+        """The labelled rows WITHOUT the loop's own decision columns — what you send to
+        `rank_topk`. A model fitted on its predecessor's bands is learning its own echo."""
+        return [{k: v for k, v in r.items() if k not in self.DECISION_COLUMNS}
+                for r in self.rows if r.get(self.outcome) is not None]
+
+    # -- persistence --------------------------------------------------------------------------
+
+    def save(self, path: str) -> None:
+        """JSON Lines, one row per line, in order. The ledger is yours; this is a default, not
+        a storage engine — past a few hundred thousand rows, keep it in your warehouse."""
+        with open(path, "w", encoding="utf-8") as fh:
+            for r in self.rows:
+                # Missing goes out as JSON null, and `allow_nan=False` makes a stray non-finite
+                # raise rather than write a bare `NaN` token — which is not JSON, so jq, a
+                # warehouse loader, or any non-Python reader chokes on a file this method
+                # presents as the default ledger format. `default=str` alone also wrote pandas
+                # sentinels as the TEXT "NaT" and "<NA>", so a reloaded null came back a string
+                # and the time axis would not parse.
+                fh.write(json.dumps({k: (None if _missing(v) else v) for k, v in r.items()},
+                                    sort_keys=True, allow_nan=False, default=str) + "\n")
+
+    @classmethod
+    def load(cls, path: str, **kwargs: Any) -> "Ledger":
+        """Rebuild a ledger from `save`. Rows go back through `append`, so the same refusals
+        apply on the way in: an unparsable timestamp or a duplicate run id is caught here rather
+        than silently producing priors that disagree with the engine's."""
+        ledger = cls(**kwargs)
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip():
+                    ledger.append(json.loads(line))
+        return ledger
+
 
 def control_arm(run_id: Any, *, fraction: float = DEFAULT_CONTROL_FRACTION, salt: str = "") -> bool:
     """True for a fixed `fraction` of run ids, by stable hash. Same answer forever, everywhere.
@@ -343,6 +456,61 @@ def control_arm(run_id: Any, *, fraction: float = DEFAULT_CONTROL_FRACTION, salt
     h = hashlib.sha256(f"{salt}\x1f{run_id}".encode("utf-8")).digest()
     bucket = int.from_bytes(h[:4], "big") % 10_000
     return bucket < int(round(fraction * 10_000))
+
+
+# ── the intervals ────────────────────────────────────────────────────────────────────────────
+#
+# The same two constructions the engine uses in `verdict_layer/evidence.py`, so a number you
+# compute from your own ledger and a number the engine reports are comparable rather than merely
+# similar. Closed form, stdlib only: no scipy, no simulation, no seed.
+
+
+def _wilson(k: int, n: int, z: float = 1.959964) -> Tuple[float, float]:
+    """Wilson score interval for a proportion. `n == 0` is the whole unit interval, not 0/0."""
+    if n == 0:
+        return (0.0, 1.0)
+    p = k / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def _newcombe(p1: float, n1: int, p2: float, n2: int) -> Tuple[float, float]:
+    """Newcombe (1998) method 10 — the hybrid-score interval on a DIFFERENCE of two proportions.
+
+    Not a normal approximation: near 0 or 1, and at the small cell counts this loop actually
+    reaches, the Wald interval runs outside [0, 1] and reports precision it does not have.
+    """
+    l1, u1 = _wilson(round(p1 * n1), n1)
+    l2, u2 = _wilson(round(p2 * n2), n2)
+    d = p1 - p2
+    return (d - math.sqrt((p1 - l1) ** 2 + (u2 - p2) ** 2),
+            d + math.sqrt((u1 - p1) ** 2 + (p2 - l2) ** 2))
+
+
+def _as_bool(value: Any) -> bool:
+    """A decision column's truth after a round trip through CSV.
+
+    `csv.DictReader` yields the STRING "False", and `bool("False")` is True — so a ledger saved
+    and reloaded as CSV put every treated run in the CONTROL cell and inverted the comparison
+    this module exists to make, silently. JSON survives a round trip; CSV does not, and the
+    ledger is the caller's table, so it can arrive either way.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "0", "no", "none", "null", "nan")
+    return bool(value)
+
+
+def _decision_columns(d: "Decision") -> Dict[str, Any]:
+    """What a Decision leaves on its run's row, so the ledger can compare arms later.
+
+    Prefixed `hs_` and kept to six flat values: the ledger is the caller's table, and these have
+    to survive a round trip through CSV and JSON without a schema.
+    """
+    return {"hs_model_ref": (d.verdict or {}).get("model_ref"), "hs_band": d.band,
+            "hs_autonomy": d.autonomy, "hs_action": d.action, "hs_control": d.control,
+            "hs_verdict_id": (d.verdict or {}).get("verdict_id")}
 
 
 # ── the gate ─────────────────────────────────────────────────────────────────────────────────
@@ -545,5 +713,36 @@ def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Iterable[Mapping[str
     }
 
 
+# ── levers you can actually pull ─────────────────────────────────────────────────────────────
+
+#: The six `trace@1` emits, by suffix. None of them is a knob: they are that group's own past.
+_HISTORY_FEATURE = re.compile(r"_(prior_n|prior_outcome_rate)$")
+
+
+def actionable(lever: Mapping[str, Any]) -> bool:
+    """False when every change the lever asks for is on a HISTORY feature.
+
+    Measured on the sample corpus: the top-ranked run's lever read "decrease agent_prior_n" — a
+    count of how many runs that agent has already done. Nobody can pull that. The engine emits
+    it because the feature is in the pattern, and the engine is right to: whether a feature is a
+    KNOB is the caller's knowledge, not a fact about the data. Deciding that here is the
+    caller's job, which is why this lives in the SDK and not in the engine's output.
+
+    Pair with `safeguards.attestable` (does it carry a token) and `safeguards.lever_helps`
+    (does it move the outcome the way you want).
+    """
+    changes = (lever or {}).get("changes") or []
+
+    def _is_a_knob(change: Any) -> bool:
+        # A change with no feature named is not evidence of a knob. It used to read as `""`,
+        # match no history suffix, and come back actionable — a SAFEGUARD failing open on
+        # exactly the malformed input it should distrust, and disagreeing with the empty-list
+        # case right beside it.
+        feature = str((change or {}).get("feature") or "").strip()
+        return bool(feature) and not _HISTORY_FEATURE.search(feature)
+
+    return any(_is_a_knob(c) for c in changes)
+
+
 __all__ = ["GROUP_ROLES", "DEFAULT_CONTROL_FRACTION", "prior_feature_names", "parse_ts", "Ledger",
-           "control_arm", "Decision", "decide", "gate", "era_lock"]
+           "control_arm", "Decision", "decide", "gate", "era_lock", "actionable"]
