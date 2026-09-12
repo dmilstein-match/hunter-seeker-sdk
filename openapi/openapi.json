@@ -441,7 +441,7 @@
       "post": {
         "operationId": "hs_score_entity",
         "summary": "Score one entity at decision time",
-        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is the one the originating run assigned this row, from the same fitted scorecard — a cache of a deterministic fit, not a second model. It can differ in the last bit of the float (measured: 7 of 12 entities identical, the rest by one ULP, never more) because the run scores the whole table at once while this scores one row; the band, the reasons and the ordering are unaffected. Do not compare two scores for exact equality — compare bands. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on. The real requirement is narrower than 'columns must match': the scorecard reads ONLY its own arm features, so extra columns are ignored and a subset carrying every arm feature scores identically - a missing one is a 422 naming the column, never a quiet wrong score. Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity.",
+        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is the one the originating run assigned this row, from the same fitted scorecard — a cache of a deterministic fit, not a second model. It can differ in the last bit of the float (measured: 7 of 12 entities identical, the rest by one ULP, never more) because the run scores the whole table at once while this scores one row; the band, the reasons and the ordering are unaffected. Do not compare two scores for exact equality — compare bands. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on. The real requirement is narrower than 'columns must match': the scorecard reads ONLY its own arm features, so extra columns are ignored and a subset carrying every arm feature scores identically - a missing one is a 422 naming the column, never a quiet wrong score. Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity. The response also carries next.then, which names the step that turns this decision into evidence: report the observed outcome under this entity_id, after which hs_action_evidence and hs_drift_status are free.",
         "tags": [
           "decide"
         ],
@@ -908,6 +908,15 @@
                     },
                     "billable_decisions": {
                       "type": "integer"
+                    },
+                    "next": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "then": {
+                          "type": "string"
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -1410,6 +1419,15 @@
                     },
                     "billable_decisions": {
                       "type": "integer"
+                    },
+                    "next": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "then": {
+                          "type": "string"
+                        }
+                      }
                     }
                   },
                   "required": [
@@ -1551,7 +1569,7 @@
       "post": {
         "operationId": "hs_report_outcome",
         "summary": "Report observed outcomes",
-        "description": "Free; writes YOUR observed outcomes (never fires an action, never retrains). For entities scored under a model_ref, append what actually happened: outcome is a binary (0/1, true/false, yes/no); observed_at is when you observed it; event_id is your idempotency key (send the same id on retry and the row is written once). Outcomes are EVIDENCE for hs_action_evidence and drift signals for hs_drift_status; they never change the scorecard, the band, or the pattern — a refit is an explicit hs_rank_topk with refit_of. Free text is refused (422 outcome_not_binary) so this ledger cannot become a transcript store. Best for: closing the loop after acting, so the engine can tell you whether acting worked. Common mistakes: inferring the outcome from the trace or the agent's own judgement — report the real-world binary you observed; sending prose.",
+        "description": "Free; writes YOUR observed outcomes (never fires an action, never retrains). For entities scored under a model_ref, append what actually happened: outcome is a binary (0/1, true/false, yes/no); observed_at is when you observed it; event_id is your idempotency key (send the same id on retry and the row is written once). Outcomes are EVIDENCE for hs_action_evidence. They do NOT feed hs_drift_status, which compares the fits you link with refit_of and nothing else — reporting outcomes will never move it. They never change the scorecard, the band, or the pattern either; a refit is an explicit hs_rank_topk with refit_of. Free text is refused (422 outcome_not_binary) so this ledger cannot become a transcript store. Best for: closing the loop after acting, so the engine can tell you whether acting worked. Common mistakes: inferring the outcome from the trace or the agent's own judgement — report the real-world binary you observed; sending prose.",
         "tags": [
           "close"
         ],
@@ -1666,7 +1684,7 @@
       "post": {
         "operationId": "hs_attest_action",
         "summary": "Attest that a lever was pulled",
-        "description": "Free; records that you acted on a lever. Pass the lever_token from hs_explain_levers and the entity's NEW value for that feature after your action. The engine evaluates compliance inside its boundary — was the target crossed, and how far did the entity move (dose_fraction 0–1) — and returns only {compliant, dose_fraction}; the threshold never crosses the wire. The attestation is what puts this entity in hs_action_evidence's acted group, which is compared with every other entity that has a reported outcome under the model_ref — no pattern filter, no control-arm input. Idempotent by event_id. Common mistakes: attesting before the change actually happened; passing the OLD value.",
+        "description": "Free; records that you acted on a lever. Pass the lever_token from hs_explain_levers and the entity's NEW value for that feature after your action. The engine evaluates compliance inside its boundary — was the target crossed, and how far did the entity move (dose_fraction 0–1) — and returns {compliant, dose_fraction, evaluated_feature, evaluated_direction}; the threshold itself never crosses the wire. Read evaluated_feature before reading compliant: a lever with two changes carries ONE token, minted for one of them, so a false here often means you moved a different feature than the one this token evaluates — not that the change failed. The attestation is what puts this entity in hs_action_evidence's acted group, which is compared with every other entity that has a reported outcome under the model_ref — no pattern filter, no control-arm input. Idempotent by event_id. Common mistakes: attesting before the change actually happened; passing the OLD value.",
         "tags": [
           "close"
         ],
@@ -1738,6 +1756,12 @@
                     },
                     "dose_fraction": {
                       "type": "number"
+                    },
+                    "evaluated_feature": {
+                      "type": "string"
+                    },
+                    "evaluated_direction": {
+                      "type": "string"
                     },
                     "event_id": {
                       "type": "string"
@@ -4464,6 +4488,13 @@
           "reason": {
             "type": "string",
             "description": "Present only when levers is empty, saying which honest-empty case this is."
+          },
+          "no_lever_for": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "entity_ids you asked about that have no disclosable lever. The list is NOT aligned to your request — ask for two and you may get one — so read this rather than assuming position. An id here means no recourse to show, never an error."
           },
           "provenance": {
             "type": "object",
