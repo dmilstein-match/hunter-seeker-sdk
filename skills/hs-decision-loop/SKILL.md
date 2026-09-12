@@ -19,7 +19,7 @@ response does not contain. Rephrase; never author.
 | 1 Orient | `hs_describe_capabilities` — contract, limits, free sample datasets | free |
 | 2 Supply | `hs_provide_dataset` — upload or public URL | free |
 | 3 Rank | `hs_rank_topk` — entity column, outcome column, subject_kind | **one run** (refunded on honest-empty) |
-| 4 Gate | `hs_model_quality` — stop if top_decile_lift < 1.5 or leak_guard is non-empty | free |
+| 4 Gate | `hs_model_quality` — stop if top_decile_lift is null or < 1.5, or if any `leak_guard` entry has `status: "leakage_suspected"`. An `excluded` entry is a routine identifier or date column, present on almost every real table, and is NOT a reason to stop | free |
 | 5 Understand | `hs_explain_drivers` (one joint pattern), `hs_explain_levers` (per entity) | free |
 | 6 Carry | `hs_context_brief` — the portable brief for your own context | free |
 | 7 Decide | `hs_score_entity(model_ref, row)` — one lead at a time | **one decision** |
@@ -27,7 +27,7 @@ response does not contain. Rephrase; never author.
 | 9 Attest | `hs_attest_action(lever_token, post_value)` | free |
 | 10 Report | `hs_report_outcome` — the real-world binary you observed | free |
 | 11 Judge | `hs_action_evidence`, `hs_drift_status` | free |
-| 12 Refit | `hs_rank_topk(refit_of: model_ref)` when drift says so — and pass `refit_of` on EVERY fit after the first, or `hs_drift_status` never has a prior (measured: 19 cycles, `no_prior`) | **one run** |
+| 12 Refit | `hs_rank_topk(refit_of: model_ref)` on YOUR cadence — hourly or monthly, nothing here assumes time passed between fits — and pass `refit_of` on EVERY fit after the first, or `hs_drift_status` never has a prior. "When drift says so" is circular on a young chain: the CUSUM cannot fire before four linked cycles. Refit on new labelled rows, on a model or prompt swap, or before the ref's 90-day expiry | **one run** |
 
 ## Reading a Verdict
 

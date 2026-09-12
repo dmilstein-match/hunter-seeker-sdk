@@ -4,8 +4,16 @@
   hs init leads.csv           propose entity/outcome columns (propose-and-gate), write hs.yaml
   hs rank                     run hs.yaml (one billed run) and print model_ref + verdict id
   hs score '{"tenure":14}'    score one row against the model_ref in hs.yaml
+  hs report '{"entity_id":"r1","outcome":1,"observed_at":"2026-01-01T00:00:00Z"}'
+                              record what actually happened (free; needs a live key)
+  hs evidence                 did acting on this model change the outcome? (free)
+  hs drift                    has the pattern moved since the last refit? (free)
   hs verify v.json s.json     keyless verification
   hs sample                   rank a hosted sample dataset (free) — the five-minute test
+
+The loop closes from a shell: rank, score, act, report, evidence, drift. The three new verbs are
+free — they spend no run and no decision — so there is no reason to close the loop from Python
+just to reach them.
 """
 from __future__ import annotations
 
@@ -381,6 +389,26 @@ def main(argv=None) -> int:
             print(json.dumps(out["entity"], indent=2))
             st = hs.verify(out["verdict"], out.get("signature"))
             print("verify:", st + ("" if st == "valid" else "  (do not act on an unverified Verdict)")); return 0
+        if cmd == "report":
+            if not rest:
+                print("usage: hs report '{\"entity_id\": \"r1\", \"outcome\": 1, "
+                      "\"observed_at\": \"2026-01-01T00:00:00Z\"}'  (or a JSON array of them)",
+                      file=sys.stderr)
+                return 2
+            payload = json.loads(rest[0])
+            # One object or many: a loop reporting a day's runs should not have to shell out
+            # once per run, and the endpoint already takes a list.
+            outcomes = payload if isinstance(payload, list) else [payload]
+            print(json.dumps(hs.report_outcome(spec["model_ref"], outcomes), indent=2))
+            return 0
+        if cmd == "evidence":
+            # Free. `live: null` means not enough evidence yet, NOT no effect — the floors are
+            # in `live_floor` beside it.
+            print(json.dumps(hs.action_evidence(spec["model_ref"]), indent=2))
+            return 0
+        if cmd == "drift":
+            print(json.dumps(hs.drift_status(spec["model_ref"]), indent=2))
+            return 0
         if cmd == "verify":
             v, s = json.load(open(rest[0])), json.load(open(rest[1])); print(hs.verify(v, s)); return 0
         print(__doc__); return 2

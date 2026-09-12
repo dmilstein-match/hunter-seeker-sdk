@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.3.0 — unreleased
+
+The half of the loop the engine cannot do for you: whether ROUTING on the band helped. New
+public API, hence a minor bump.
+
+- **`Ledger.evidence()`** — acted vs control, WITHIN the act band, with the engine's own floors
+  (30 per cell, `small_n` under 100) and a Newcombe interval on the difference. This is not a
+  convenience wrapper over `hs_action_evidence`: that tool splits on lever ATTESTATION, so a
+  routing decision, which has no `lever_token`, never reaches its acted cell — and everything
+  else, including refused rows, escalated rows and your own control arm, lands in its comparison
+  arm. The treated cell here is every band-`act` run the loop acted on and did not hold out.
+  Keying it on `action == "intercept"` would have left it permanently empty for every
+  desirable-outcome loop, where a certified run is one to let PROCEED.
+- **`Ledger.record_decision` / `append_decision`** write the six `hs_*` decision columns onto the
+  run's row, which is what `evidence()` later reads; **`fit_rows()`** strips them again, because a
+  model fitted on its predecessor's bands is learning its own echo. **`save` / `load`** are JSON
+  Lines round trips through `append`, so a reloaded ledger is refused the same way a live one is.
+- **`actionable(lever)`** — False when every change a lever asks for is on a `*_prior_n` or
+  `*_prior_outcome_rate` feature. Measured on the sample corpus: the top-ranked run's lever read
+  "decrease `agent_prior_n`" — a count of how many runs that agent has already done.
+- **`hs report` / `hs evidence` / `hs drift`** close the loop from a shell. All three are free.
+- **New skill `hs-governed-loop`** (five skills now), and two corrections to `hs-decision-loop`:
+  stop only on `leak_guard` `status: "leakage_suspected"` (halting on a non-empty guard stops on
+  almost every real table), and refit on YOUR cadence — "when drift says so" is circular, since
+  the CUSUM cannot fire before four linked cycles.
+
+Three claims in the skill were corrected against source before it shipped: the control-arm recipe
+(the published hash is over `salt + 0x1f + run_id`, first four bytes — a `sha256(run_id) % 10000`
+variant disagrees on about a quarter of ids), `trace@1` emitting two features per BOUND role
+rather than a flat six, and the ranking Verdict listing 100 entities inline rather than binding
+500.
+
 ## 2.2.3 — 2026-09-11
 
 Fixes from a second review of the governed loop. Three of them raise where 2.2.2 did not
