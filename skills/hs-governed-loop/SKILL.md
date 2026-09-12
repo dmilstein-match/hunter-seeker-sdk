@@ -46,7 +46,9 @@ appears in the ranking is accepted and quietly becomes its own subject in the ev
 id is worse — it can inherit another row's fit-time `principal_reasons` inside a signed verdict.
 
 Floors: 500 labelled rows before the engine can hold any back. Below 500 the engine does **not**
-refuse — it ranks, gates by bootstrap instead of a held-out slice (`validation.scheme` says so),
+refuse — it ranks and gates by bootstrap instead of a held-out slice (`validation.scheme` reads
+`none` and `n_holdout` is null; the engine reports a STATE, never the technique, so do not look
+for the word "bootstrap"),
 and can still clear the bar and mint a `model_ref`. That is the trap: a table of pure noise a
 couple of thousand rows long clears 1.5 far more often than feels possible. Start the loop at
 ~3,000 rows, and treat any fit below that as unjudged for routing whatever `usability` says.

@@ -339,10 +339,14 @@ class Ledger:
 
     def record_decision(self, run_id: Any, decision: "Decision") -> None:
         """Write a Decision's facts onto a run already in the ledger."""
-        row = self._by_id.get(str(run_id))
-        if row is None:
+        # `_by_id` maps the run key to its INDEX, not to the row — same as `observe` above.
+        # Treating it as the row made this method raise `'int' object has no attribute 'update'`
+        # on every call it did not refuse, and the only test covered the not-found branch, so a
+        # method that could never succeed sat behind a green suite.
+        i = self._by_id.get(str(run_id))
+        if i is None:
             raise KeyError(f"run {run_id!r} is not in the ledger")
-        row.update(_decision_columns(decision))
+        self.rows[i].update(_decision_columns(decision))
 
     def append_decision(self, row: Mapping[str, Any], decision: "Decision") -> None:
         """Append a new run WITH its decision in one step — what a harness does at end of run.
@@ -372,6 +376,12 @@ class Ledger:
         Floors and interval match the engine's: `live` is None until each cell has `n_min` rows
         with a known outcome, `small_n` is True below `small_n_below`, and the interval is
         Newcombe on the difference (control − treated).
+
+        NOTE THE SIGN. This reports control MINUS treated, so on an adverse outcome a positive
+        number means acting helped. `hs_action_evidence.diff` is the other way round (acted minus
+        not-acted). The two are otherwise the same construction — verified equal to within 5e-9 —
+        but placed side by side without reading the field names, an improvement looks like a
+        regression.
         """
         def cell(pred) -> Dict[str, Any]:
             rows = [r for r in self.rows
@@ -385,9 +395,9 @@ class Ledger:
         # row is one to let through, so `decide()` returns "proceed" — keying on "intercept"
         # left the treated cell permanently empty for every desirable-outcome loop, which is
         # half of them, and `live` then stayed None forever with nothing saying why.
-        treated = cell(lambda r: r.get("hs_band") == "act" and not r.get("hs_control")
+        treated = cell(lambda r: r.get("hs_band") == "act" and not _as_bool(r.get("hs_control"))
                        and r.get("hs_action") not in (None, "default"))
-        control = cell(lambda r: r.get("hs_band") == "act" and bool(r.get("hs_control")))
+        control = cell(lambda r: r.get("hs_band") == "act" and _as_bool(r.get("hs_control")))
         out: Dict[str, Any] = {
             "model_ref": model_ref, "treated": treated, "control": control, "live": None,
             "live_floor": {"n_min": n_min, "small_n_below": small_n_below},
@@ -412,7 +422,14 @@ class Ledger:
         a storage engine — past a few hundred thousand rows, keep it in your warehouse."""
         with open(path, "w", encoding="utf-8") as fh:
             for r in self.rows:
-                fh.write(json.dumps(r, sort_keys=True, default=str) + "\n")
+                # Missing goes out as JSON null, and `allow_nan=False` makes a stray non-finite
+                # raise rather than write a bare `NaN` token — which is not JSON, so jq, a
+                # warehouse loader, or any non-Python reader chokes on a file this method
+                # presents as the default ledger format. `default=str` alone also wrote pandas
+                # sentinels as the TEXT "NaT" and "<NA>", so a reloaded null came back a string
+                # and the time axis would not parse.
+                fh.write(json.dumps({k: (None if _missing(v) else v) for k, v in r.items()},
+                                    sort_keys=True, allow_nan=False, default=str) + "\n")
 
     @classmethod
     def load(cls, path: str, **kwargs: Any) -> "Ledger":
@@ -470,6 +487,19 @@ def _newcombe(p1: float, n1: int, p2: float, n2: int) -> Tuple[float, float]:
     d = p1 - p2
     return (d - math.sqrt((p1 - l1) ** 2 + (u2 - p2) ** 2),
             d + math.sqrt((u1 - p1) ** 2 + (p2 - l2) ** 2))
+
+
+def _as_bool(value: Any) -> bool:
+    """A decision column's truth after a round trip through CSV.
+
+    `csv.DictReader` yields the STRING "False", and `bool("False")` is True — so a ledger saved
+    and reloaded as CSV put every treated run in the CONTROL cell and inverted the comparison
+    this module exists to make, silently. JSON survives a round trip; CSV does not, and the
+    ledger is the caller's table, so it can arrive either way.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "0", "no", "none", "null", "nan")
+    return bool(value)
 
 
 def _decision_columns(d: "Decision") -> Dict[str, Any]:
@@ -702,7 +732,16 @@ def actionable(lever: Mapping[str, Any]) -> bool:
     (does it move the outcome the way you want).
     """
     changes = (lever or {}).get("changes") or []
-    return any(not _HISTORY_FEATURE.search(str(c.get("feature", ""))) for c in changes)
+
+    def _is_a_knob(change: Any) -> bool:
+        # A change with no feature named is not evidence of a knob. It used to read as `""`,
+        # match no history suffix, and come back actionable — a SAFEGUARD failing open on
+        # exactly the malformed input it should distrust, and disagreeing with the empty-list
+        # case right beside it.
+        feature = str((change or {}).get("feature") or "").strip()
+        return bool(feature) and not _HISTORY_FEATURE.search(feature)
+
+    return any(_is_a_knob(c) for c in changes)
 
 
 __all__ = ["GROUP_ROLES", "DEFAULT_CONTROL_FRACTION", "prior_feature_names", "parse_ts", "Ledger",
