@@ -168,10 +168,20 @@ def verdict_tools(hs: Client) -> List[Any]:
         """Free. Ingest CloudEvents 1.0 envelopes (case.opened, case.closed, outcome.observed, action.attested, human.action, or your own types) into a registered event-stream source under a key with the ingest scope — the same door as POST /api/events. Prompts and completions never enter: a content key at any depth refuses the whole batch as 422 content_refused; a replayed id is a duplicate, not an error; a near-duplicate (same subject and type within a second) is held for a person."""
         return hs.ingest_events(events)
 
+    @tool
+    def hs_set_policy(policy: Dict[str, Any], agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """Free. Save a cost table (the policy) for the workspace or one agent: unit, the cost of the agent acting, a reviewer, a human instead (per attribute value), a failure reaching the customer (per attribute value), a redo, the reviewer's catch rate (per attribute value), the human failure model and the control fraction. Returns the policy_ref (pl1_…): the same table saved twice is the same ref, a one-cent change is a new one and a version. Nothing is pre-filled or inferred — every cell is yours."""
+        return hs.set_policy(policy, agent_id=agent_id)
+
+    @tool
+    def hs_get_policy(agent_id: Optional[str] = None, kinds: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+        """Free. Read the current cost table (policy), its versions (what each replaced and which cells moved) and, for the kinds you pass, the implied threshold below which unattended autonomy is cheapest under it — the demo's decision rule (the cheapest lane at both ends of a 95% Wilson interval; when the ends disagree the call is none). result: none before any table was saved."""
+        return hs.get_policy(agent_id=agent_id, kinds=kinds)
+
     # Every operation the REST surface exposes, which is what the parity gate checks.
     return [hs_describe_capabilities, hs_provide_dataset, hs_append_rows, hs_rank_topk,
             hs_poll_task, hs_model_quality, hs_explain_drivers, hs_explain_levers,
             hs_context_brief, hs_score_entity, hs_score_batch, hs_verify_verdict,
             hs_attest_action, hs_report_outcome, hs_action_evidence, hs_drift_status,
             hs_register_source, hs_propose_binding, hs_confirm_binding, hs_get_binding,
-            hs_ingest_events]
+            hs_ingest_events, hs_set_policy, hs_get_policy]

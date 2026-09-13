@@ -15,8 +15,8 @@ jobs:
       # Required. Red until the product publishes the real schemas for the eight existing tools.
       - run: python scripts/check_spec.py
       # Compares the committed spec with the published one for this contract version.
-      - run: scripts/pull_spec.sh 2.3.0
-        continue-on-error: true   # turn required once the product endpoint serves 2.3.0
+      - run: scripts/pull_spec.sh 2.4.0
+        continue-on-error: true   # turn required once the product endpoint serves 2.4.0
   python:
     runs-on: ubuntu-latest
     steps:

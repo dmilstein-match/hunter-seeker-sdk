@@ -2,6 +2,20 @@
 
 ## 2.3.0 — unreleased
 
+### Contract 2.4.0 (additive; every 2.3.0 call is unchanged)
+
+- **`hs_set_policy`** (`POST /v1/set-policy`) and **`hs_get_policy`** (`POST /v1/get-policy`) —
+  the cost table as operations (Datagoat unit 12): unit, the cost of the agent acting, a
+  reviewer, a human instead and a failure reaching the customer (both per attribute value), a
+  redo, the reviewer's catch rate, the human failure model and the control fraction. The same
+  table saved twice is the same `policy_ref` (`pl1_…`, the canonical hash); a one-cent change is
+  a new ref and a version row that names the cells that moved. `hs_get_policy` evaluates the
+  kinds you pass under the table and returns each kind's implied unattended-autonomy threshold —
+  the demo's decision rule ported byte-for-byte (the cheapest lane at both ends of a 95% Wilson
+  interval; when the ends disagree the call is `none`). Nothing is pre-filled or inferred.
+  Reached from the Python client (`set_policy`, `get_policy`), both framework adapters and the
+  n8n node (`Set the policy`, `Get the policy`).
+
 ### Contract 2.3.0 (additive; every 2.2.0 call is unchanged)
 
 - **`hs_ingest_events`** (`POST /v1/ingest-events`) — the ingest door as an operation (Datagoat

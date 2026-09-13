@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Verdict Layer API",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -55,7 +55,8 @@
       "1.4.0",
       "2.0.0",
       "2.1.0",
-      "2.2.0"
+      "2.2.0",
+      "2.3.0"
     ],
     "sunset_of_1_4_0": "2027-09-01"
   },
@@ -2285,6 +2286,124 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/hs_ingest_events_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/set-policy": {
+      "post": {
+        "operationId": "hs_set_policy",
+        "summary": "Save a cost table; the same table is the same policy_ref.",
+        "description": "Free; no engine run. Save a cost table (the policy) for the workspace or one agent: the cost of the agent acting, a reviewer, a human instead (per attribute value), a failure reaching the customer (per attribute value), a redo, the reviewer's catch rate (per attribute value), the human failure model and the control fraction, in the unit you name. Returns the policy_ref (pl1_...: the canonical hash of the table — the same table saved twice is the same ref), whether anything changed, and the implied unattended-autonomy threshold per kind for the kinds you pass. Nothing is pre-filled or inferred: every cell is yours. Common mistakes: sending the demo's numbers as if they were yours; sending a control fraction under 5 for an agent you mean to take live (refused at go-live, not here).",
+        "tags": [
+          "govern"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Set the policy",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_set_policy_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_set_policy_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/get-policy": {
+      "post": {
+        "operationId": "hs_get_policy",
+        "summary": "Read the current cost table, its versions and the implied thresholds.",
+        "description": "Free; no engine run. Read the current cost table (policy) for the workspace or one agent: the document, its policy_ref, the versions (what each replaced and which cells moved), and — for the kinds you pass — the implied threshold below which unattended autonomy is cheapest under this table (the demo's decision rule, ported byte-for-byte: the cheapest lane at both ends of a 95% Wilson interval; when the two ends disagree the call is none). A kind whose attribute value is not in the table gets no threshold and names the missing cell; nothing is defaulted. Common mistakes: reading before any table was saved (result: none, save one with hs_set_policy).",
+        "tags": [
+          "govern"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Get the policy",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_get_policy_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_get_policy_output"
                 }
               }
             }
@@ -5929,6 +6048,286 @@
           "duplicates",
           "held",
           "events"
+        ]
+      },
+      "hs_set_policy_input": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The agent the table belongs to; omit for the workspace's default table (unit 14 mounts tables on agents)."
+          },
+          "policy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "unit",
+              "c_act",
+              "c_review",
+              "c_human_by",
+              "c_fail_by",
+              "c_redo",
+              "review_catch_by",
+              "human_model",
+              "no_call",
+              "control_fraction"
+            ],
+            "properties": {
+              "version": {
+                "type": "string",
+                "enum": [
+                  "dg.policy.v1"
+                ]
+              },
+              "unit": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "symbol",
+                  "per",
+                  "decimals"
+                ],
+                "properties": {
+                  "symbol": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12,
+                    "description": "$, bps, min, or your own word."
+                  },
+                  "per": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "description": "ticket, change, order ..."
+                  },
+                  "decimals": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  }
+                }
+              },
+              "c_act": {
+                "type": "number",
+                "minimum": 0,
+                "description": "The agent handling a case."
+              },
+              "c_review": {
+                "type": "number",
+                "minimum": 0,
+                "description": "A reviewer reading the agent's work."
+              },
+              "c_human_by": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "attr",
+                  "values"
+                ],
+                "properties": {
+                  "attr": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The kind-of-work attribute this the cost of a human doing the case instead varies by (e.g. service, plan, size)."
+                  },
+                  "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "minProperties": 1,
+                    "description": "the cost of a human doing the case instead per attribute value: { \"payments-api\": 2.0, ... }."
+                  }
+                }
+              },
+              "c_fail_by": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "attr",
+                  "values"
+                ],
+                "properties": {
+                  "attr": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The kind-of-work attribute this the cost of a failure that reaches the customer varies by (e.g. service, plan, size)."
+                  },
+                  "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "minProperties": 1,
+                    "description": "the cost of a failure that reaches the customer per attribute value: { \"payments-api\": 2.0, ... }."
+                  }
+                }
+              },
+              "c_redo": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Redoing a case the reviewer caught."
+              },
+              "review_catch_by": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "attr",
+                  "values"
+                ],
+                "properties": {
+                  "attr": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "minProperties": 1,
+                    "description": "The share of failures a reviewer catches, per attribute value (0-1)."
+                  }
+                }
+              },
+              "human_model": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "floor",
+                  "slope"
+                ],
+                "properties": {
+                  "floor": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "slope": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "description": "The human's failure probability given the agent's: floor + slope * p, clamped to [0.002, 0.95]."
+              },
+              "no_call": {
+                "type": "string",
+                "enum": [
+                  "existing_policy"
+                ],
+                "description": "What happens when the record makes no call: the existing policy (the only option until a connector signal exists)."
+              },
+              "control_fraction": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "Percent of cases held out as the control arm; 0-100 here, the live floor of 5 is enforced when an agent goes live."
+              }
+            }
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "additionalProperties": false
+      },
+      "hs_set_policy_output": {
+        "type": "object",
+        "properties": {
+          "policy_ref": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
+          },
+          "replaces": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "policy_ref",
+          "changed"
+        ]
+      },
+      "hs_get_policy_input": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The agent whose table to read; omit for the workspace's default table."
+          },
+          "kinds": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "Kinds of work to evaluate under the table: attribute values, e.g. [{ service: 'payments-api', size: 'L' }]. Each comes back with its solo threshold or the cell it is missing.",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "hs_get_policy_output": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "none"
+            ]
+          },
+          "policy_ref": {
+            "type": "string"
+          },
+          "policy": {
+            "type": "object"
+          },
+          "versions": {
+            "type": "array"
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "object"
+                },
+                "threshold": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "missing": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "result"
         ]
       }
     }

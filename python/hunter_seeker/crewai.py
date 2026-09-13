@@ -180,6 +180,19 @@ def _specs(hs: Client) -> List[tuple]:
          "completions are refused (content_refused); a replayed id is a duplicate.",
          {"events": (List[Dict[str, Any]], ...)},
          lambda events: hs.ingest_events(events)),
+
+        ("hs_set_policy",
+         "Free. Save a cost table (the policy): unit, agent / review / redo costs, human and "
+         "failure costs per attribute value, the reviewer's catch rate, the human model, the "
+         "control fraction. The same table is the same policy_ref. Every cell is yours.",
+         {"policy": (Dict[str, Any], ...), "agent_id": (Optional[str], None)},
+         lambda policy, agent_id=None: hs.set_policy(policy, agent_id=agent_id)),
+
+        ("hs_get_policy",
+         "Free. Read the current cost table, its versions and, for the kinds passed, the implied "
+         "unattended-autonomy threshold under it (none before any save).",
+         {"agent_id": (Optional[str], None), "kinds": (Optional[List[Dict[str, str]]], None)},
+         lambda agent_id=None, kinds=None: hs.get_policy(agent_id=agent_id, kinds=kinds)),
     ]
 
 

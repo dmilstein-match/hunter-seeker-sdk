@@ -63,6 +63,9 @@ const OPS = {
   getBinding: { path: "/v1/get-binding", label: "Get a binding (free)", cost: "free" },
   // — supply, contract 2.3.0: event ingest —
   ingestEvents: { path: "/v1/ingest-events", label: "Ingest events (free)", cost: "free" },
+  // — govern, contract 2.4.0: the cost table —
+  setPolicy: { path: "/v1/set-policy", label: "Set the policy (free)", cost: "free" },
+  getPolicy: { path: "/v1/get-policy", label: "Get the policy (free)", cost: "free" },
 } as const;
 
 type Op = keyof typeof OPS;
@@ -265,6 +268,11 @@ export class HunterSeeker implements INodeType {
 
       // ── event ingest (contract 2.3.0) ─────────────────────────────────────────────────────
       { displayName: "Events (JSON)", name: "events", type: "json", default: "[]", ...show("ingestEvents"), description: "An array of CloudEvents 1.0 envelopes (specversion, id, source, type, subject?, time?, data?). Attributes only — a prompt or completion key refuses the batch." },
+
+      // ── the cost table (contract 2.4.0) ───────────────────────────────────────────────────
+      { displayName: "Agent ID", name: "policyAgentId", type: "string", default: "", ...show("setPolicy", "getPolicy"), description: "The agent the table belongs to; empty for the workspace's default table." },
+      { displayName: "Policy (JSON)", name: "policy", type: "json", default: "{}", ...show("setPolicy"), description: "The cost table: unit, c_act, c_review, c_human_by, c_fail_by, c_redo, review_catch_by, human_model, no_call, control_fraction. Every cell is yours; nothing is pre-filled." },
+      { displayName: "Kinds (JSON)", name: "policyKinds", type: "json", default: "[]", ...show("getPolicy"), description: "Kinds of work to evaluate: [{ service: 'payments-api', size: 'L' }] — each comes back with its unattended threshold or the missing cell." },
 
       // ── score ─────────────────────────────────────────────────────────────────────────────
       { displayName: "Entity ID", name: "entityId", type: "string", default: "", ...show("score", "report", "attest") },
@@ -559,6 +567,14 @@ export class HunterSeeker implements INodeType {
         case "ingestEvents": {
           const events = json("events");
           body = { events: Array.isArray(events) ? events : [events] };
+          break;
+        }
+        case "setPolicy":
+          body = { policy: json("policy"), ...opt("agent_id", p("policyAgentId")) };
+          break;
+        case "getPolicy": {
+          const kinds = json("policyKinds");
+          body = { ...opt("agent_id", p("policyAgentId")), ...(Array.isArray(kinds) && kinds.length ? { kinds } : {}) };
           break;
         }
       }
