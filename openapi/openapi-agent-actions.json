@@ -379,7 +379,7 @@
       "post": {
         "operationId": "hs_decide",
         "summary": "One decision for a case: lane, route, band, autonomy, a signed receipt.",
-        "description": "ONE DECISION for a case: lane (act | review | human | none — the record's answer), route (what to do: lane when applied, else none), band, max_autonomy, likelihood_direction, a signed receipt and a case_ref — computed by the worker from the strictly-earlier record of this exact kind of work (cases closed before this one opened, never the same instant), the workspace's cost table (hs_set_policy) at both ends of a 95% Wilson interval, the control slice (a stable share of cases held out as none with reason control), and the agent's mode. Branch on route ONLY. In shadow every receipt is route none with reason shadow while lane says what the agent would have done; smoke returns a signed receipt and writes nothing. A kind with no record is none with reason no_record — never a guess. The receipt verifies with hs_verify_verdict and carries binding_ref, policy_ref, core_hash. Common mistakes: branching on lane (it is the record's answer, not the instruction); sending the same case twice and expecting two rows of record (a decision is not an outcome — report outcomes with hs_report_outcome / the event door).",
+        "description": "ONE DECISION for a case: lane (act | review | human | none — the record's answer), route (what to do: lane when applied, else none), band, max_autonomy, likelihood_direction, a signed receipt and a case_ref — computed by the worker from the strictly-earlier record of this exact kind of work (cases closed before this one opened, never the same instant), the workspace's cost table (hs_set_policy) at both ends of a 95% Wilson interval, the control slice (a stable share of cases held out as none with reason control), and the agent's mode. Branch on route ONLY. In shadow every receipt is route none with reason shadow while lane says what the agent would have done; smoke returns a signed receipt and writes nothing. A kind with no record is none with reason no_record — never a guess. The receipt is a signed verdict (kind: decision; the case's attributes are case_kind): it verifies with hs_verify_verdict and carries binding_ref, policy_ref, core_hash. Common mistakes: branching on lane (it is the record's answer, not the instruction); sending the same case twice and expecting two rows of record (a decision is not an outcome — report outcomes with hs_report_outcome / the event door).",
         "tags": ["decide"],
         "x-hs-cost": "one_decision",
         "x-hs-agent-action": true,
@@ -3711,6 +3711,22 @@
           },
           "agent_id": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["decision"]
+          },
+          "case_kind": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "actor": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "mode": {
             "type": "string",
