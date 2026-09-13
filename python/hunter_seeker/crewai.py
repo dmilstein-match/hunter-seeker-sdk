@@ -146,6 +146,14 @@ def _specs(hs: Client) -> List[tuple]:
          "Never diff two briefs yourself.",
          {"model_ref": (str, ...)},
          lambda model_ref: hs.drift_status(model_ref)),
+
+        ("hs_register_source",
+         "Free. Register a source the workspace keeps (kind file | warehouse | event_stream). For a "
+         "file, pass the dataset_id an upload produced; its contract is profiled as the ingest "
+         "completes. A hsk_test_ key cannot register sources.",
+         {"kind": (str, ...), "name": (str, ...), "dataset_id": (Optional[str], None),
+          "contract": (Optional[Dict[str, Any]], None)},
+         lambda kind, name, dataset_id=None, contract=None: hs.register_source(kind, name, dataset_id=dataset_id, contract=contract)),
     ]
 
 

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Verdict Layer API",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -49,16 +49,24 @@
       "name": "explain"
     }
   ],
+  "x-hs-deprecation": {
+    "policy": "12 months",
+    "served_in_parallel": [
+      "1.4.0",
+      "2.0.0"
+    ],
+    "sunset_of_1_4_0": "2027-09-01"
+  },
   "paths": {
     "/v1/describe-capabilities": {
       "post": {
         "operationId": "hs_describe_capabilities",
         "summary": "Contract, limits, sample datasets, reading kinds.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "orient"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -97,11 +105,11 @@
       "post": {
         "operationId": "hs_provide_dataset",
         "summary": "Register a dataset by upload URL or public fetch URL.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "supply"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -140,11 +148,11 @@
       "post": {
         "operationId": "hs_append_rows",
         "summary": "Send a large table one chunk at a time, over this connection — the ingest path that needs no other network access.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "supply"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -183,11 +191,11 @@
       "post": {
         "operationId": "hs_rank_topk",
         "summary": "Discover the pattern and rank a table (one billed run). Add refit_of to refresh an analysis.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "run"
         ],
         "x-hs-agent-action": true,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -226,11 +234,11 @@
       "post": {
         "operationId": "hs_poll_task",
         "summary": "Poll an async run (kept beside MCP Tasks).",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "run"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -269,11 +277,11 @@
       "post": {
         "operationId": "hs_model_quality",
         "summary": "Lift, calibration, validation, leak guard for a ranking.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "interrogate"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -312,11 +320,11 @@
       "post": {
         "operationId": "hs_explain_drivers",
         "summary": "The joint pattern: conditions, coverage, lift.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "interrogate"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -355,11 +363,11 @@
       "post": {
         "operationId": "hs_explain_levers",
         "summary": "Per-entity counterfactual levers.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "interrogate"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -398,11 +406,11 @@
       "post": {
         "operationId": "hs_context_brief",
         "summary": "Portable brief with provenance.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "export"
         ],
         "x-hs-agent-action": false,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -468,7 +476,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string",
@@ -499,7 +506,8 @@
                   "model_ref",
                   "row",
                   "subject_kind"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -511,7 +519,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "entity": {
                       "type": "object",
@@ -924,7 +931,8 @@
                     "verdict",
                     "signature",
                     "billable_decisions"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -973,7 +981,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string",
@@ -1007,7 +1014,8 @@
                   "model_ref",
                   "rows",
                   "subject_kind"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1019,7 +1027,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "entities": {
                       "type": "array",
@@ -1435,7 +1442,8 @@
                     "verdict",
                     "signature",
                     "billable_decisions"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -1477,7 +1485,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "verdict": {
                     "type": "object",
@@ -1518,7 +1525,8 @@
                 "required": [
                   "verdict",
                   "signature"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1530,7 +1538,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "status": {
                       "type": "string",
@@ -1547,7 +1554,8 @@
                   },
                   "required": [
                     "status"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -1596,7 +1604,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string",
@@ -1638,7 +1645,8 @@
                 "required": [
                   "model_ref",
                   "outcomes"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1650,7 +1658,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "written": {
                       "type": "integer"
@@ -1662,7 +1669,8 @@
                   "required": [
                     "written",
                     "duplicates"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -1711,7 +1719,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string"
@@ -1737,7 +1744,8 @@
                   "lever_token",
                   "post_value",
                   "acted_at"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1749,7 +1757,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "compliant": {
                       "type": "boolean"
@@ -1775,7 +1782,8 @@
                     "dose_fraction",
                     "event_id",
                     "written"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -1824,7 +1832,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string"
@@ -1832,7 +1839,8 @@
                 },
                 "required": [
                   "model_ref"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1844,7 +1852,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "model_ref": {
                       "type": "string"
@@ -1869,7 +1876,8 @@
                     "model_ref",
                     "live",
                     "live_floor"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -1918,7 +1926,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string"
@@ -1926,7 +1933,8 @@
                 },
                 "required": [
                   "model_ref"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1938,7 +1946,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "pattern": {
                       "type": "string",
@@ -1979,7 +1986,67 @@
                     "pattern",
                     "cusum_fired",
                     "recommendation"
-                  ]
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/register-source": {
+      "post": {
+        "operationId": "hs_register_source",
+        "summary": "Register a file, warehouse or event-stream source by contract.",
+        "description": "Free; no engine run. Register a SOURCE — a table the workspace keeps and returns to — rather than a one-shot dataset. For kind `file`, pass the dataset_id an upload produced (hs_provide_dataset + PUT, or hs_append_rows) and the rows become the source's data; its contract (columns, logical types, key candidates, time columns, row count, date range, PII classes) is profiled as the ingest completes and appears on the Sources screen. For `warehouse` and `event_stream`, register the contract now; the connection or the stream is attached in the console. Returns the source_id. A hsk_test_ key may not register sources (samples only); it answers 403 test_key_sample_only.",
+        "tags": [
+          "supply"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Register a source",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_register_source_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_register_source_output"
                 }
               }
             }
@@ -4828,14 +4895,218 @@
           "limits"
         ],
         "additionalProperties": false
+      },
+      "hs_register_source_input": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file",
+              "warehouse",
+              "event_stream"
+            ],
+            "description": "What the source is. `file`: a table already registered through hs_provide_dataset / hs_append_rows — pass its dataset_id and the rows become this source's data. `warehouse` and `event_stream`: registered by contract only; the connection and the stream arrive through the console."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Human-readable source name, shown on the Sources screen."
+          },
+          "dataset_id": {
+            "type": "string",
+            "description": "For kind `file`: a dataset_id from hs_provide_dataset or hs_append_rows whose upload has completed. Consumed by this call — it is the source's data now, not a rankable handle."
+          },
+          "contract": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Optional source contract (ODCS-shaped): columns[{ name, logical_type, physical_type?, nullable?, classification? }], primary_key_candidates[], time_columns[{ name, semantics, timezone?, format? }], row_count?, date_range?. Stored as given; a file source's contract is profiled from its rows when the ingest completes.",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "name",
+                    "logical_type"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "logical_type": {
+                      "type": "string",
+                      "enum": [
+                        "integer",
+                        "number",
+                        "boolean",
+                        "string",
+                        "timestamp",
+                        "date",
+                        "unknown"
+                      ]
+                    },
+                    "physical_type": {
+                      "type": "string"
+                    },
+                    "nullable": {
+                      "type": "boolean"
+                    },
+                    "classification": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "identifier",
+                        "email",
+                        "phone",
+                        "person_name",
+                        "address",
+                        "ip_address",
+                        "url",
+                        "free_text"
+                      ]
+                    }
+                  }
+                }
+              },
+              "primary_key_candidates": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "time_columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "name",
+                    "semantics"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "semantics": {
+                      "type": "string",
+                      "enum": [
+                        "event",
+                        "ingest",
+                        "unknown"
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string",
+                      "enum": [
+                        "utc",
+                        "offset",
+                        "naive",
+                        "unknown"
+                      ]
+                    },
+                    "format": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "row_count": {
+                "type": "integer"
+              },
+              "date_range": {
+                "type": "object",
+                "properties": {
+                  "earliest": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "latest": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "hs_register_source_output": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "description": "The source's id in this workspace."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file",
+              "warehouse",
+              "event_stream"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ingesting",
+              "ready",
+              "failed"
+            ],
+            "description": "`ready` when the source has data behind it (a file's rows landed); `pending` for a contract-only registration awaiting its connection."
+          },
+          "contract": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The contract as stored — the caller's, or null until profiling fills it in."
+          },
+          "next": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "source_id",
+          "kind",
+          "name",
+          "status",
+          "provenance"
+        ],
+        "additionalProperties": true
       }
     }
-  },
-  "x-hs-deprecation": {
-    "policy": "12 months",
-    "served_in_parallel": [
-      "1.4.0"
-    ],
-    "sunset_of_1_4_0": "2027-09-01"
   }
 }

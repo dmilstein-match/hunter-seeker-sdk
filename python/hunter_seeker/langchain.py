@@ -142,8 +142,15 @@ def verdict_tools(hs: Client) -> List[Any]:
         """Free. Has the pattern changed since the prior run? recommendation keep | refit | abandon. Never diff two briefs yourself."""
         return hs.drift_status(model_ref)
 
+    @tool
+    def hs_register_source(kind: str, name: str, dataset_id: Optional[str] = None,
+                           contract: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Free. Register a SOURCE the workspace keeps and returns to (kind file | warehouse | event_stream). For a file, pass the dataset_id an upload produced (hs_provide_dataset + PUT, or hs_append_rows); its contract is profiled as the ingest completes. A hsk_test_ key cannot register sources."""
+        return hs.register_source(kind, name, dataset_id=dataset_id, contract=contract)
+
     # Every operation the REST surface exposes, which is what the parity gate checks.
     return [hs_describe_capabilities, hs_provide_dataset, hs_append_rows, hs_rank_topk,
             hs_poll_task, hs_model_quality, hs_explain_drivers, hs_explain_levers,
             hs_context_brief, hs_score_entity, hs_score_batch, hs_verify_verdict,
-            hs_attest_action, hs_report_outcome, hs_action_evidence, hs_drift_status]
+            hs_attest_action, hs_report_outcome, hs_action_evidence, hs_drift_status,
+            hs_register_source]

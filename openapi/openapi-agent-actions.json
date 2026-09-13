@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Agent Actions (curated)",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -54,11 +54,11 @@
       "post": {
         "operationId": "hs_rank_topk",
         "summary": "Discover the pattern and rank a table (one billed run). Add refit_of to refresh an analysis.",
+        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "tags": [
           "run"
         ],
         "x-hs-agent-action": true,
-        "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
         "requestBody": {
           "required": true,
           "content": {
@@ -124,7 +124,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string",
@@ -155,7 +154,8 @@
                   "model_ref",
                   "row",
                   "subject_kind"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -167,7 +167,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "entity": {
                       "type": "object",
@@ -580,7 +579,8 @@
                     "verdict",
                     "signature",
                     "billable_decisions"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -622,7 +622,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "verdict": {
                     "type": "object",
@@ -663,7 +662,8 @@
                 "required": [
                   "verdict",
                   "signature"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -675,7 +675,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "status": {
                       "type": "string",
@@ -692,7 +691,8 @@
                   },
                   "required": [
                     "status"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -741,7 +741,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string",
@@ -783,7 +782,8 @@
                 "required": [
                   "model_ref",
                   "outcomes"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -795,7 +795,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "written": {
                       "type": "integer"
@@ -807,7 +806,8 @@
                   "required": [
                     "written",
                     "duplicates"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -856,7 +856,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": false,
                 "properties": {
                   "model_ref": {
                     "type": "string"
@@ -864,7 +863,8 @@
                 },
                 "required": [
                   "model_ref"
-                ]
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -876,7 +876,6 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": false,
                   "properties": {
                     "pattern": {
                       "type": "string",
@@ -917,7 +916,8 @@
                     "pattern",
                     "cusum_fired",
                     "recommendation"
-                  ]
+                  ],
+                  "additionalProperties": false
                 }
               }
             }
@@ -3736,6 +3736,217 @@
           "limits"
         ],
         "additionalProperties": false
+      },
+      "hs_register_source_input": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file",
+              "warehouse",
+              "event_stream"
+            ],
+            "description": "What the source is. `file`: a table already registered through hs_provide_dataset / hs_append_rows — pass its dataset_id and the rows become this source's data. `warehouse` and `event_stream`: registered by contract only; the connection and the stream arrive through the console."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "description": "Human-readable source name, shown on the Sources screen."
+          },
+          "dataset_id": {
+            "type": "string",
+            "description": "For kind `file`: a dataset_id from hs_provide_dataset or hs_append_rows whose upload has completed. Consumed by this call — it is the source's data now, not a rankable handle."
+          },
+          "contract": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Optional source contract (ODCS-shaped): columns[{ name, logical_type, physical_type?, nullable?, classification? }], primary_key_candidates[], time_columns[{ name, semantics, timezone?, format? }], row_count?, date_range?. Stored as given; a file source's contract is profiled from its rows when the ingest completes.",
+            "properties": {
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "name",
+                    "logical_type"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "logical_type": {
+                      "type": "string",
+                      "enum": [
+                        "integer",
+                        "number",
+                        "boolean",
+                        "string",
+                        "timestamp",
+                        "date",
+                        "unknown"
+                      ]
+                    },
+                    "physical_type": {
+                      "type": "string"
+                    },
+                    "nullable": {
+                      "type": "boolean"
+                    },
+                    "classification": {
+                      "type": "string",
+                      "enum": [
+                        "none",
+                        "identifier",
+                        "email",
+                        "phone",
+                        "person_name",
+                        "address",
+                        "ip_address",
+                        "url",
+                        "free_text"
+                      ]
+                    }
+                  }
+                }
+              },
+              "primary_key_candidates": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "time_columns": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "name",
+                    "semantics"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "semantics": {
+                      "type": "string",
+                      "enum": [
+                        "event",
+                        "ingest",
+                        "unknown"
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string",
+                      "enum": [
+                        "utc",
+                        "offset",
+                        "naive",
+                        "unknown"
+                      ]
+                    },
+                    "format": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "row_count": {
+                "type": "integer"
+              },
+              "date_range": {
+                "type": "object",
+                "properties": {
+                  "earliest": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "latest": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "hs_register_source_output": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "description": "The source's id in this workspace."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file",
+              "warehouse",
+              "event_stream"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ingesting",
+              "ready",
+              "failed"
+            ],
+            "description": "`ready` when the source has data behind it (a file's rows landed); `pending` for a contract-only registration awaiting its connection."
+          },
+          "contract": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The contract as stored — the caller's, or null until profiling fills it in."
+          },
+          "next": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "source_id",
+          "kind",
+          "name",
+          "status",
+          "provenance"
+        ],
+        "additionalProperties": true
       }
     }
   }

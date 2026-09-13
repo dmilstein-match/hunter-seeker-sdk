@@ -27,6 +27,7 @@ ALL_OPS = {
     "hs_poll_task", "hs_model_quality", "hs_explain_drivers", "hs_explain_levers",
     "hs_context_brief", "hs_score_entity", "hs_score_batch", "hs_verify_verdict",
     "hs_attest_action", "hs_report_outcome", "hs_action_evidence", "hs_drift_status",
+    "hs_register_source",
 }
 
 # The three whose absence made the loop unrunnable, called out so a regression names itself.
