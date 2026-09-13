@@ -318,6 +318,24 @@ class Client:
         content_refused; a replayed id is a duplicate, not an error; a near-duplicate is held."""
         return self._call("/v1/ingest-events", {"events": [dict(e) for e in events]})
 
+    # -- contract 2.4.0: the cost table ---------------------------------------- #
+    def set_policy(self, policy: Mapping[str, Any], *, agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """Save a cost table (unit, agent / review / redo costs, human and failure costs per
+        attribute value, the reviewer's catch rate, the human model, the control fraction).
+        The same table saved twice is the same policy_ref; a one-cent change is a new one."""
+        body: Dict[str, Any] = {"policy": dict(policy)}
+        if agent_id: body["agent_id"] = agent_id
+        return self._call("/v1/set-policy", body)
+
+    def get_policy(self, *, agent_id: Optional[str] = None,
+                   kinds: Optional[Sequence[Mapping[str, str]]] = None) -> Dict[str, Any]:
+        """Read the current cost table with its versions and, for the kinds passed, the implied
+        threshold below which unattended autonomy is cheapest (result: none before any save)."""
+        body: Dict[str, Any] = {}
+        if agent_id: body["agent_id"] = agent_id
+        if kinds: body["kinds"] = [dict(k) for k in kinds]
+        return self._call("/v1/get-policy", body)
+
     def export_bundle(self, verdict_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         body = {"verdict_id": verdict_id}
         if entity_id: body["entity_id"] = entity_id
