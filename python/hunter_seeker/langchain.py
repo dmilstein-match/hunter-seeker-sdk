@@ -163,9 +163,15 @@ def verdict_tools(hs: Client) -> List[Any]:
         """Free. Read a binding by id or binding_ref: status, open questions, the confirmed document, manifest, leak guard and versions."""
         return hs.get_binding(binding_id=binding_id, binding_ref=binding_ref)
 
+    @tool
+    def hs_ingest_events(events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Free. Ingest CloudEvents 1.0 envelopes (case.opened, case.closed, outcome.observed, action.attested, human.action, or your own types) into a registered event-stream source under a key with the ingest scope — the same door as POST /api/events. Prompts and completions never enter: a content key at any depth refuses the whole batch as 422 content_refused; a replayed id is a duplicate, not an error; a near-duplicate (same subject and type within a second) is held for a person."""
+        return hs.ingest_events(events)
+
     # Every operation the REST surface exposes, which is what the parity gate checks.
     return [hs_describe_capabilities, hs_provide_dataset, hs_append_rows, hs_rank_topk,
             hs_poll_task, hs_model_quality, hs_explain_drivers, hs_explain_levers,
             hs_context_brief, hs_score_entity, hs_score_batch, hs_verify_verdict,
             hs_attest_action, hs_report_outcome, hs_action_evidence, hs_drift_status,
-            hs_register_source, hs_propose_binding, hs_confirm_binding, hs_get_binding]
+            hs_register_source, hs_propose_binding, hs_confirm_binding, hs_get_binding,
+            hs_ingest_events]

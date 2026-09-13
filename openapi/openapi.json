@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Verdict Layer API",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -54,7 +54,8 @@
     "served_in_parallel": [
       "1.4.0",
       "2.0.0",
-      "2.1.0"
+      "2.1.0",
+      "2.2.0"
     ],
     "sunset_of_1_4_0": "2027-09-01"
   },
@@ -2225,6 +2226,65 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/hs_get_binding_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingest-events": {
+      "post": {
+        "operationId": "hs_ingest_events",
+        "summary": "Ingest CloudEvents into a registered event-stream source (content refused).",
+        "description": "Ingest CloudEvents (case opened / closed, outcomes observed, actions attested, human actions) into a registered event-stream source under a key with the ingest scope — the same door as POST /api/events. Content never enters: an event carrying a prompt or completion key at any depth is refused as 422 content_refused naming the key, and nothing from that batch is persisted. A replayed id answers duplicate: true (no second row); an event with the same subject and type within one second of another is held for a person. Events are persisted raw and resolved into cases, outcomes and attestations by a job against the confirmed case binding; nothing is interpreted on the request path. Common mistakes: sending the case key in data instead of subject; sending an unregistered source (404 unknown_source: register the stream under Sources → Connect → Event stream).",
+        "tags": [
+          "supply"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Ingest events",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_ingest_events_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_ingest_events_output"
                 }
               }
             }
@@ -5760,6 +5820,116 @@
           "provenance"
         ],
         "additionalProperties": true
+      },
+      "hs_ingest_events_input": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 500,
+            "description": "CloudEvents 1.0 envelopes. `source` names a registered event-stream source (its source URI or id); `type` says what happened (`case.opened`, `case.closed`, `outcome.observed`, `action.attested`, `human.action`, or your own); `subject` is the case key when you have one; `data` carries attributes, ids, timings and counts — never prompts or completions.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "specversion",
+                "id",
+                "source",
+                "type"
+              ],
+              "properties": {
+                "specversion": {
+                  "type": "string",
+                  "enum": [
+                    "1.0"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "source": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "type": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "subject": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "time": {
+                  "type": "string",
+                  "description": "RFC 3339 instant (or a date)."
+                },
+                "datacontenttype": {
+                  "type": "string"
+                },
+                "data": {
+                  "description": "Attributes only. Any of the content keys (gen_ai.prompt, gen_ai.completion, gen_ai.input.messages, gen_ai.output.messages, gen_ai.system_instructions, llm.prompts, llm.completions, input.value, output.value) at any depth refuses the whole batch."
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "hs_ingest_events_output": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "integer"
+          },
+          "duplicates": {
+            "type": "integer"
+          },
+          "held": {
+            "type": "integer"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type",
+                "status"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "accepted",
+                    "duplicate",
+                    "held"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "accepted",
+          "duplicates",
+          "held",
+          "events"
+        ]
       }
     }
   }
