@@ -173,6 +173,13 @@ def _specs(hs: Client) -> List[tuple]:
          "guard, versions.",
          {"binding_id": (Optional[str], None), "binding_ref": (Optional[str], None)},
          lambda binding_id=None, binding_ref=None: hs.get_binding(binding_id=binding_id, binding_ref=binding_ref)),
+
+        ("hs_ingest_events",
+         "Free. Ingest CloudEvents 1.0 envelopes (case opened / closed, outcomes observed, actions "
+         "attested) into a registered event-stream source; needs the ingest scope. Prompts and "
+         "completions are refused (content_refused); a replayed id is a duplicate.",
+         {"events": (List[Dict[str, Any]], ...)},
+         lambda events: hs.ingest_events(events)),
     ]
 
 

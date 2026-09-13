@@ -311,6 +311,13 @@ class Client:
         if binding_ref: body["binding_ref"] = binding_ref
         return self._call("/v1/get-binding", body)
 
+    # -- contract 2.3.0: event ingest ------------------------------------------ #
+    def ingest_events(self, events: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+        """Ingest CloudEvents 1.0 envelopes (up to 500) into a registered event-stream source under
+        a key with the ingest scope. Content keys (prompts, completions) refuse the batch as 422
+        content_refused; a replayed id is a duplicate, not an error; a near-duplicate is held."""
+        return self._call("/v1/ingest-events", {"events": [dict(e) for e in events]})
+
     def export_bundle(self, verdict_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         body = {"verdict_id": verdict_id}
         if entity_id: body["entity_id"] = entity_id

@@ -2,6 +2,18 @@
 
 ## 2.3.0 — unreleased
 
+### Contract 2.3.0 (additive; every 2.2.0 call is unchanged)
+
+- **`hs_ingest_events`** (`POST /v1/ingest-events`) — the ingest door as an operation (Datagoat
+  unit 11): CloudEvents 1.0 envelopes, up to 500 per call, into a registered event-stream source
+  under a key with the `ingest` scope. Content never enters — a prompt or completion key at any
+  depth refuses the whole batch as 422 `content_refused` naming the key, and nothing from it is
+  persisted; a replayed id answers `duplicate`, not an error; an event with the same subject and
+  type within a second of another is `held` for a person. Events are persisted raw and resolved
+  into cases, outcomes and attestations by a job against the confirmed case binding. Reached
+  from the Python client (`ingest_events`), both framework adapters and the n8n node
+  (`Ingest events`).
+
 The half of the loop the engine cannot do for you: whether ROUTING on the band helped. New
 public API, hence a minor bump.
 

@@ -61,6 +61,8 @@ const OPS = {
   proposeBinding: { path: "/v1/propose-binding", label: "Propose a binding (free)", cost: "free" },
   confirmBinding: { path: "/v1/confirm-binding", label: "Confirm a binding (free)", cost: "free" },
   getBinding: { path: "/v1/get-binding", label: "Get a binding (free)", cost: "free" },
+  // — supply, contract 2.3.0: event ingest —
+  ingestEvents: { path: "/v1/ingest-events", label: "Ingest events (free)", cost: "free" },
 } as const;
 
 type Op = keyof typeof OPS;
@@ -260,6 +262,9 @@ export class HunterSeeker implements INodeType {
       { displayName: "Binding ID", name: "bindingId", type: "string", default: "", ...show("confirmBinding", "getBinding"), description: "From Propose a binding." },
       { displayName: "Answers (JSON)", name: "bindingAnswers", type: "json", default: "{}", ...show("confirmBinding"), description: "question id → option key, for every open question." },
       { displayName: "Binding Ref", name: "bindingRef", type: "string", default: "", ...show("getBinding"), description: "bd1_… — instead of the id." },
+
+      // ── event ingest (contract 2.3.0) ─────────────────────────────────────────────────────
+      { displayName: "Events (JSON)", name: "events", type: "json", default: "[]", ...show("ingestEvents"), description: "An array of CloudEvents 1.0 envelopes (specversion, id, source, type, subject?, time?, data?). Attributes only — a prompt or completion key refuses the batch." },
 
       // ── score ─────────────────────────────────────────────────────────────────────────────
       { displayName: "Entity ID", name: "entityId", type: "string", default: "", ...show("score", "report", "attest") },
@@ -551,6 +556,11 @@ export class HunterSeeker implements INodeType {
         case "getBinding":
           body = { ...opt("binding_id", p("bindingId")), ...opt("binding_ref", p("bindingRef")) };
           break;
+        case "ingestEvents": {
+          const events = json("events");
+          body = { events: Array.isArray(events) ? events : [events] };
+          break;
+        }
       }
 
       const res = await post(OPS[op].path, body);
