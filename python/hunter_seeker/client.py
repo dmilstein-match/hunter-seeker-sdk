@@ -336,6 +336,21 @@ class Client:
         if kinds: body["kinds"] = [dict(k) for k in kinds]
         return self._call("/v1/get-policy", body)
 
+    # -- contract 2.5.0: one decision for a case ------------------------------- #
+    def decide(self, agent_id: str, case: Mapping[str, Any], *, mode: Optional[str] = None,
+               model_ref: Optional[str] = None, open_levers: Optional[Sequence[Mapping[str, Any]]] = None,
+               abandoned: Optional[bool] = None) -> Dict[str, Any]:
+        """One decision for a case: lane (the record's answer), route (what to do — the lane when
+        applied, else none), band, max_autonomy, likelihood_direction, a signed receipt and a
+        case_ref. Branch on `route` only. `case` is {case_id?, kind: {attr: value}, actor:
+        {kind, name}, opened_at}; `mode` overrides the agent's (shadow | live | smoke)."""
+        body: Dict[str, Any] = {"agent_id": agent_id, "case": dict(case)}
+        if mode: body["mode"] = mode
+        if model_ref: body["model_ref"] = model_ref
+        if open_levers: body["open_levers"] = [dict(l) for l in open_levers]
+        if abandoned is not None: body["abandoned"] = abandoned
+        return self._call("/v1/decide", body)
+
     def export_bundle(self, verdict_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         body = {"verdict_id": verdict_id}
         if entity_id: body["entity_id"] = entity_id

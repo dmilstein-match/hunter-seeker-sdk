@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Agent Actions (curated)",
-    "version": "2.4.0",
+    "version": "2.5.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -55,9 +55,7 @@
         "operationId": "hs_rank_topk",
         "summary": "Discover the pattern and rank a table (one billed run). Add refit_of to refresh an analysis.",
         "description": "Existing tool; schemas are exported from the product's MCP server (packages/mcp/scripts/export-tool-schemas.mts).",
-        "tags": [
-          "run"
-        ],
+        "tags": ["run"],
         "x-hs-agent-action": true,
         "requestBody": {
           "required": true,
@@ -93,519 +91,12 @@
         }
       }
     },
-    "/v1/score-entity": {
-      "post": {
-        "operationId": "hs_score_entity",
-        "summary": "Score one entity at decision time",
-        "description": "Costs ONE DECISION from your quota (never a run). Score ONE row against a scorecard the engine already fitted — use the model_ref that a cleared hs_rank_topk returned. Returns the calibrated score (0–1), an engine-authored band (act = certified likely; escalate = uncertain, ask a human; refuse = the engine will not vouch, with a reason), a max_autonomy hint (L0–L4: how much rope THIS decision earns), up to four principal_reasons (engine-ordered levers in the shape adverse-action rules require), and a SIGNED Verdict you can hand to a reviewer or verify with hs_verify_verdict. The score is the one the originating run assigned this row, from the same fitted scorecard — a cache of a deterministic fit, not a second model. It can differ in the last bit of the float (measured: 7 of 12 entities identical, the rest by one ULP, never more) because the run scores the whole table at once while this scores one row; the band, the reasons and the ordering are unaffected. Do not compare two scores for exact equality — compare bands. Best for: 'should my agent act on this lead / account / ticket right now'. Not for: rows from a different table than the model_ref was fitted on. The real requirement is narrower than 'columns must match': the scorecard reads ONLY its own arm features, so extra columns are ignored and a subset carrying every arm feature scores identically - a missing one is a 422 naming the column, never a quiet wrong score. Firewall: no thresholds, weights, or condition counts are returned — read band and principal_reasons, never try to reconstruct the rule. subject_kind 'person' REQUIRES acknowledge_decision_support: true and caps max_autonomy at L2 (L0 without a human principal). A refuse band bills nothing. Common mistakes: reusing an expired model_ref (404 model_ref_expired → re-run hs_rank_topk, do not retry); treating band as advice — it is a fact about likelihood; on an adverse outcome 'act' means likely to churn/default/fail, on a desirable one likely to convert/renew — read verdict.outcome.polarity. The response also carries next.then, which names the step that turns this decision into evidence: report the observed outcome under this entity_id, after which hs_action_evidence and hs_drift_status are free.",
-        "tags": [
-          "decide"
-        ],
-        "x-hs-cost": "one_decision",
-        "x-hs-agent-action": true,
-        "x-mcp-annotations": {
-          "title": "Score one entity at decision time",
-          "readOnlyHint": true,
-          "destructiveHint": false,
-          "idempotentHint": true,
-          "openWorldHint": false
-        },
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "oauth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "model_ref": {
-                    "type": "string",
-                    "pattern": "^mr1_[0-9a-f]{32}$"
-                  },
-                  "row": {
-                    "type": "object",
-                    "description": "One entity's feature values. Supply every column the analysis used, with the same types; EXTRA columns are ignored, so a wider row is fine and a subset is fine as long as it carries them all. A genuinely missing one is refused (422 row_not_scoreable) naming the column - the engine never scores a row it cannot score."
-                  },
-                  "entity_id": {
-                    "type": "string"
-                  },
-                  "subject_kind": {
-                    "type": "string",
-                    "enum": [
-                      "person",
-                      "org",
-                      "object",
-                      "event",
-                      "other"
-                    ]
-                  },
-                  "acknowledge_decision_support": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "model_ref",
-                  "row",
-                  "subject_kind"
-                ],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "entity": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "entity_id": {
-                          "type": "string"
-                        },
-                        "score": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "band": {
-                          "type": "string",
-                          "enum": [
-                            "act",
-                            "escalate",
-                            "refuse"
-                          ]
-                        },
-                        "band_reason": {
-                          "type": "string",
-                          "enum": [
-                            "certified",
-                            "uncertain",
-                            "low_likelihood",
-                            "no_clearance",
-                            "validation_none",
-                            "honest_empty"
-                          ]
-                        },
-                        "max_autonomy": {
-                          "type": "string",
-                          "enum": [
-                            "L0",
-                            "L1",
-                            "L2",
-                            "L3",
-                            "L4"
-                          ]
-                        },
-                        "principal_reasons": {
-                          "type": "array",
-                          "maxItems": 4,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                              "feature_label": {
-                                "type": "string"
-                              },
-                              "direction": {
-                                "type": "string",
-                                "enum": [
-                                  "increase",
-                                  "decrease",
-                                  "change"
-                                ]
-                              },
-                              "magnitude": {
-                                "type": "string",
-                                "enum": [
-                                  "substantial",
-                                  "notable",
-                                  "slight"
-                                ]
-                              },
-                              "likelihood_direction": {
-                                "type": "string",
-                                "enum": [
-                                  "lower",
-                                  "higher",
-                                  "unchanged"
-                                ]
-                              },
-                              "association_not_causal": {
-                                "type": "boolean",
-                                "const": true
-                              }
-                            },
-                            "required": [
-                              "feature_label",
-                              "direction",
-                              "association_not_causal"
-                            ]
-                          }
-                        }
-                      },
-                      "required": [
-                        "entity_id",
-                        "score",
-                        "band",
-                        "band_reason",
-                        "max_autonomy",
-                        "principal_reasons"
-                      ]
-                    },
-                    "verdict": {
-                      "$id": "https://hunter-seeker.io/schemas/verdict.json",
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "verdict_id": {
-                          "type": "string"
-                        },
-                        "kind": {
-                          "type": "string",
-                          "enum": [
-                            "ranking",
-                            "entity_score"
-                          ]
-                        },
-                        "analysis_id": {
-                          "type": "string",
-                          "pattern": "^sk1_[0-9a-f]{32}$"
-                        },
-                        "model_ref": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "ranking_ref": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        },
-                        "engine_version": {
-                          "type": "string"
-                        },
-                        "core_hash": {
-                          "type": "string"
-                        },
-                        "contract_hash": {
-                          "type": "string"
-                        },
-                        "tool_contract_version": {
-                          "type": "string"
-                        },
-                        "dataset_content_hash": {
-                          "type": "string"
-                        },
-                        "spec_hash": {
-                          "type": "string"
-                        },
-                        "computed_at": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "expires_at": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "issuer": {
-                          "type": "string"
-                        },
-                        "on_behalf_of": {
-                          "oneOf": [
-                            {
-                              "type": "object",
-                              "additionalProperties": false,
-                              "properties": {
-                                "principal_id": {
-                                  "type": "string",
-                                  "minLength": 1
-                                },
-                                "principal_type": {
-                                  "type": "string",
-                                  "enum": [
-                                    "user",
-                                    "service"
-                                  ]
-                                },
-                                "source": {
-                                  "type": "string",
-                                  "enum": [
-                                    "oauth",
-                                    "obo",
-                                    "key"
-                                  ]
-                                }
-                              },
-                              "required": [
-                                "principal_id",
-                                "principal_type",
-                                "source"
-                              ]
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "agent": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "properties": {
-                            "client_id": {
-                              "type": "string"
-                            },
-                            "key_id": {
-                              "type": "string"
-                            }
-                          }
-                        },
-                        "outcome": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "properties": {
-                            "column": {
-                              "type": "string"
-                            },
-                            "polarity": {
-                              "type": "string",
-                              "enum": [
-                                "adverse",
-                                "desirable",
-                                "neutral"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "column",
-                            "polarity"
-                          ]
-                        },
-                        "subject_kind": {
-                          "type": "string",
-                          "enum": [
-                            "person",
-                            "org",
-                            "object",
-                            "event",
-                            "other"
-                          ]
-                        },
-                        "acknowledge_decision_support": {
-                          "type": "boolean"
-                        },
-                        "trust": {
-                          "type": "object"
-                        },
-                        "entities": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "properties": {
-                              "entity_id": {
-                                "type": "string"
-                              },
-                              "score": {
-                                "type": "number"
-                              },
-                              "band": {
-                                "type": "string",
-                                "enum": [
-                                  "act",
-                                  "escalate",
-                                  "refuse"
-                                ]
-                              },
-                              "band_reason": {
-                                "type": "string"
-                              },
-                              "max_autonomy": {
-                                "type": "string",
-                                "enum": [
-                                  "L0",
-                                  "L1",
-                                  "L2",
-                                  "L3",
-                                  "L4"
-                                ]
-                              },
-                              "principal_reasons": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "properties": {
-                                    "feature_label": {
-                                      "type": "string"
-                                    },
-                                    "direction": {
-                                      "type": "string",
-                                      "enum": [
-                                        "increase",
-                                        "decrease",
-                                        "change"
-                                      ]
-                                    },
-                                    "magnitude": {
-                                      "type": "string",
-                                      "enum": [
-                                        "substantial",
-                                        "notable",
-                                        "slight"
-                                      ]
-                                    },
-                                    "likelihood_direction": {
-                                      "type": "string",
-                                      "enum": [
-                                        "lower",
-                                        "higher",
-                                        "unchanged"
-                                      ]
-                                    },
-                                    "association_not_causal": {
-                                      "type": "boolean",
-                                      "const": true
-                                    }
-                                  },
-                                  "required": [
-                                    "feature_label",
-                                    "direction",
-                                    "association_not_causal"
-                                  ]
-                                }
-                              }
-                            },
-                            "required": [
-                              "entity_id",
-                              "score",
-                              "band",
-                              "max_autonomy"
-                            ]
-                          }
-                        },
-                        "honest_empty": {
-                          "oneOf": [
-                            {
-                              "type": "null"
-                            },
-                            {
-                              "type": "object",
-                              "properties": {
-                                "reasons": {
-                                  "type": "array",
-                                  "items": {
-                                    "type": "string"
-                                  }
-                                }
-                              }
-                            }
-                          ]
-                        },
-                        "provenance_class": {
-                          "type": "string",
-                          "const": "finding"
-                        }
-                      },
-                      "required": [
-                        "verdict_id",
-                        "kind",
-                        "analysis_id",
-                        "engine_version",
-                        "core_hash",
-                        "computed_at",
-                        "expires_at",
-                        "issuer",
-                        "outcome",
-                        "entities",
-                        "provenance_class"
-                      ]
-                    },
-                    "signature": {
-                      "oneOf": [
-                        {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "properties": {
-                            "protected": {
-                              "type": "string"
-                            },
-                            "signature": {
-                              "type": "string"
-                            },
-                            "kid": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "protected",
-                            "signature"
-                          ]
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "billable_decisions": {
-                      "type": "integer"
-                    },
-                    "next": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "then": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  },
-                  "required": [
-                    "entity",
-                    "verdict",
-                    "signature",
-                    "billable_decisions"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Problem",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/verify-verdict": {
       "post": {
         "operationId": "hs_verify_verdict",
         "summary": "Verify a Verdict's signature",
         "description": "Free; no engine run. Check that a Verdict was issued by Hunter-Seeker and has not been altered. Verification is credential-free on the REST endpoint POST https://hunter-seeker.io/api/v1/verify-verdict and in the published hs-verify / @hunter-seeker/verify libraries, which check a signature against the public JWKS with no server at all. Over MCP it still needs a credential like every other tool, because MCP authenticates the whole connection rather than each call — so hand a reviewer the REST endpoint or the library, not an MCP session.  Pass the verdict object and its signature exactly as received. Returns status: valid | invalid_signature | expired | unknown_key — and nothing else, so the endpoint cannot be probed. Best for: an approval step that must prove the score was not authored by the agent; an auditor; another vendor's agent. The same check runs offline with the open-source libraries hs-verify (pip) and @hunter-seeker/verify (npm) against the public keys at hunter-seeker.io/.well-known/jwks.json. Common mistakes: re-serialising the verdict before verifying (pass the object, the verifier canonicalises it — RFC 8785); treating 'expired' as valid — an expired verdict is re-scored, never reused.",
-        "tags": [
-          "prove"
-        ],
+        "tags": ["prove"],
         "x-hs-cost": "free",
         "x-hs-agent-action": true,
         "x-mcp-annotations": {
@@ -634,10 +125,7 @@
                         "type": "string"
                       }
                     },
-                    "required": [
-                      "verdict_id",
-                      "kind"
-                    ]
+                    "required": ["verdict_id", "kind"]
                   },
                   "signature": {
                     "type": "object",
@@ -653,16 +141,10 @@
                         "type": "string"
                       }
                     },
-                    "required": [
-                      "protected",
-                      "signature"
-                    ]
+                    "required": ["protected", "signature"]
                   }
                 },
-                "required": [
-                  "verdict",
-                  "signature"
-                ],
+                "required": ["verdict", "signature"],
                 "additionalProperties": false
               }
             }
@@ -678,20 +160,13 @@
                   "properties": {
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "valid",
-                        "invalid_signature",
-                        "expired",
-                        "unknown_key"
-                      ]
+                      "enum": ["valid", "invalid_signature", "expired", "unknown_key"]
                     },
                     "kid": {
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "status"
-                  ],
+                  "required": ["status"],
                   "additionalProperties": false
                 }
               }
@@ -715,9 +190,7 @@
         "operationId": "hs_report_outcome",
         "summary": "Report observed outcomes",
         "description": "Free; writes YOUR observed outcomes (never fires an action, never retrains). For entities scored under a model_ref, append what actually happened: outcome is a binary (0/1, true/false, yes/no); observed_at is when you observed it; event_id is your idempotency key (send the same id on retry and the row is written once). Outcomes are EVIDENCE for hs_action_evidence. They do NOT feed hs_drift_status, which compares the fits you link with refit_of and nothing else — reporting outcomes will never move it. They never change the scorecard, the band, or the pattern either; a refit is an explicit hs_rank_topk with refit_of. Free text is refused (422 outcome_not_binary) so this ledger cannot become a transcript store. Best for: closing the loop after acting, so the engine can tell you whether acting worked. Common mistakes: inferring the outcome from the trace or the agent's own judgement — report the real-world binary you observed; sending prose.",
-        "tags": [
-          "close"
-        ],
+        "tags": ["close"],
         "x-hs-cost": "free",
         "x-hs-agent-action": true,
         "x-mcp-annotations": {
@@ -757,11 +230,7 @@
                           "type": "string"
                         },
                         "outcome": {
-                          "type": [
-                            "boolean",
-                            "integer",
-                            "string"
-                          ]
+                          "type": ["boolean", "integer", "string"]
                         },
                         "observed_at": {
                           "type": "string"
@@ -771,18 +240,11 @@
                           "maxLength": 128
                         }
                       },
-                      "required": [
-                        "entity_id",
-                        "outcome",
-                        "observed_at"
-                      ]
+                      "required": ["entity_id", "outcome", "observed_at"]
                     }
                   }
                 },
-                "required": [
-                  "model_ref",
-                  "outcomes"
-                ],
+                "required": ["model_ref", "outcomes"],
                 "additionalProperties": false
               }
             }
@@ -803,10 +265,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "written",
-                    "duplicates"
-                  ],
+                  "required": ["written", "duplicates"],
                   "additionalProperties": false
                 }
               }
@@ -830,9 +289,7 @@
         "operationId": "hs_drift_status",
         "summary": "Has the pattern moved?",
         "description": "Free; no engine run. For a model_ref that has been refit at least once (hs_rank_topk with refit_of), compare the current pattern with the prior: pattern is unchanged | changed | no_prior; pattern_diff names conditions added or removed and thresholds that moved (feature + direction only — values never leave the engine); cusum_fired says whether the calibration coefficient drifted; recommendation is keep | refit | abandon. One honest-empty on refresh is NOT drift — abandon requires two consecutive honest-empties on the same analysis. Never infer drift by comparing two briefs yourself; this tool is the engine's comparison. Common mistakes: refitting on 'changed' alone — refit is recommended only when the coefficient also drifted or across ≥ 2 cycles.",
-        "tags": [
-          "judge"
-        ],
+        "tags": ["judge"],
         "x-hs-cost": "free",
         "x-hs-agent-action": true,
         "x-mcp-annotations": {
@@ -861,9 +318,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "model_ref"
-                ],
+                "required": ["model_ref"],
                 "additionalProperties": false
               }
             }
@@ -879,17 +334,10 @@
                   "properties": {
                     "pattern": {
                       "type": "string",
-                      "enum": [
-                        "unchanged",
-                        "changed",
-                        "no_prior"
-                      ]
+                      "enum": ["unchanged", "changed", "no_prior"]
                     },
                     "pattern_diff": {
-                      "type": [
-                        "object",
-                        "null"
-                      ]
+                      "type": ["object", "null"]
                     },
                     "cusum_fired": {
                       "type": "boolean"
@@ -902,22 +350,71 @@
                     },
                     "recommendation": {
                       "type": "string",
-                      "enum": [
-                        "keep",
-                        "refit",
-                        "abandon"
-                      ]
+                      "enum": ["keep", "refit", "abandon"]
                     },
                     "consecutive_honest_empty": {
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "pattern",
-                    "cusum_fired",
-                    "recommendation"
-                  ],
+                  "required": ["pattern", "cusum_fired", "recommendation"],
                   "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/decide": {
+      "post": {
+        "operationId": "hs_decide",
+        "summary": "One decision for a case: lane, route, band, autonomy, a signed receipt.",
+        "description": "ONE DECISION for a case: lane (act | review | human | none — the record's answer), route (what to do: lane when applied, else none), band, max_autonomy, likelihood_direction, a signed receipt and a case_ref — computed by the worker from the strictly-earlier record of this exact kind of work (cases closed before this one opened, never the same instant), the workspace's cost table (hs_set_policy) at both ends of a 95% Wilson interval, the control slice (a stable share of cases held out as none with reason control), and the agent's mode. Branch on route ONLY. In shadow every receipt is route none with reason shadow while lane says what the agent would have done; smoke returns a signed receipt and writes nothing. A kind with no record is none with reason no_record — never a guess. The receipt verifies with hs_verify_verdict and carries binding_ref, policy_ref, core_hash. Common mistakes: branching on lane (it is the record's answer, not the instruction); sending the same case twice and expecting two rows of record (a decision is not an outcome — report outcomes with hs_report_outcome / the event door).",
+        "tags": ["decide"],
+        "x-hs-cost": "one_decision",
+        "x-hs-agent-action": true,
+        "x-mcp-annotations": {
+          "title": "Decide",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_decide_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_decide_output"
                 }
               }
             }
@@ -940,19 +437,12 @@
         "operationId": "register_agent",
         "summary": "Register an agent and receive a samples-only key.",
         "description": "Mint a hsk_test_ machine key in ONE unauthenticated call — no signup, no email, no card. The key runs the free sample datasets only, consumes no quota, and is safe to print in a log; the restriction is enforced before any upload URL is minted or any byte is read. The response carries a claim_url: a human can open it later, sign in, and the SAME key keeps working against a workspace they own, with every model_ref it produced preserved. Claiming attaches a human to the TENANT, never to the CREDENTIAL — the key stays a test key, and decisions about people stay capped at max_autonomy L0 because a machine credential carries no human principal. A `mode` field in the request body is IGNORED: this endpoint cannot issue a live key.",
-        "tags": [
-          "orient"
-        ],
+        "tags": ["orient"],
         "x-hs-cost": "free",
         "x-hs-agent-action": true,
         "security": [],
         "x-hs-surface-exempt": {
-          "rules": [
-            "naming",
-            "mcp",
-            "n8n",
-            "python-adapters"
-          ],
+          "rules": ["naming", "mcp", "n8n", "python-adapters"],
           "reason": "Not a tool: no MCP twin, no run cost, served by a hand-written static route — so the live tools/list leg will never see it, and that leg only fails today because HS_KEY is usually unset. The only unauthenticated operation. n8n is configured through a stored HunterSeekerApi credential and the Python adapters take an already-authenticated Client, so neither has a coherent place for the call you make BEFORE you have a key. Python does in fact reach it, via `hs signup` in the CLI, which the parity script has no leg for. The path stays /v1/agents/register (relative to servers[0].url) rather than /v1/register-agent because it is live and every surface that hands it to a caller cites it as the absolute REGISTER_URL, so moving it would break callers in the field."
         },
         "requestBody": {
@@ -980,12 +470,7 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "api_key",
-                    "agent_id",
-                    "claim_url",
-                    "mode"
-                  ],
+                  "required": ["api_key", "agent_id", "claim_url", "mode"],
                   "properties": {
                     "api_key": {
                       "type": "string",
@@ -1004,9 +489,7 @@
                     },
                     "mode": {
                       "type": "string",
-                      "enum": [
-                        "test"
-                      ]
+                      "enum": ["test"]
                     },
                     "scopes": {
                       "type": "array",
@@ -1118,24 +601,13 @@
                 "type": "string"
               },
               "field": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               }
             },
-            "required": [
-              "code",
-              "remedy"
-            ]
+            "required": ["code", "remedy"]
           }
         },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "hs"
-        ]
+        "required": ["type", "title", "status", "hs"]
       },
       "Verdict": {
         "$id": "https://hunter-seeker.io/schemas/verdict.json",
@@ -1147,26 +619,17 @@
           },
           "kind": {
             "type": "string",
-            "enum": [
-              "ranking",
-              "entity_score"
-            ]
+            "enum": ["ranking", "entity_score"]
           },
           "analysis_id": {
             "type": "string",
             "pattern": "^sk1_[0-9a-f]{32}$"
           },
           "model_ref": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "ranking_ref": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "engine_version": {
             "type": "string"
@@ -1209,25 +672,14 @@
                   },
                   "principal_type": {
                     "type": "string",
-                    "enum": [
-                      "user",
-                      "service"
-                    ]
+                    "enum": ["user", "service"]
                   },
                   "source": {
                     "type": "string",
-                    "enum": [
-                      "oauth",
-                      "obo",
-                      "key"
-                    ]
+                    "enum": ["oauth", "obo", "key"]
                   }
                 },
-                "required": [
-                  "principal_id",
-                  "principal_type",
-                  "source"
-                ]
+                "required": ["principal_id", "principal_type", "source"]
               },
               {
                 "type": "null"
@@ -1255,27 +707,14 @@
               },
               "polarity": {
                 "type": "string",
-                "enum": [
-                  "adverse",
-                  "desirable",
-                  "neutral"
-                ]
+                "enum": ["adverse", "desirable", "neutral"]
               }
             },
-            "required": [
-              "column",
-              "polarity"
-            ]
+            "required": ["column", "polarity"]
           },
           "subject_kind": {
             "type": "string",
-            "enum": [
-              "person",
-              "org",
-              "object",
-              "event",
-              "other"
-            ]
+            "enum": ["person", "org", "object", "event", "other"]
           },
           "acknowledge_decision_support": {
             "type": "boolean"
@@ -1297,24 +736,14 @@
                 },
                 "band": {
                   "type": "string",
-                  "enum": [
-                    "act",
-                    "escalate",
-                    "refuse"
-                  ]
+                  "enum": ["act", "escalate", "refuse"]
                 },
                 "band_reason": {
                   "type": "string"
                 },
                 "max_autonomy": {
                   "type": "string",
-                  "enum": [
-                    "L0",
-                    "L1",
-                    "L2",
-                    "L3",
-                    "L4"
-                  ]
+                  "enum": ["L0", "L1", "L2", "L3", "L4"]
                 },
                 "principal_reasons": {
                   "type": "array",
@@ -1327,47 +756,26 @@
                       },
                       "direction": {
                         "type": "string",
-                        "enum": [
-                          "increase",
-                          "decrease",
-                          "change"
-                        ]
+                        "enum": ["increase", "decrease", "change"]
                       },
                       "magnitude": {
                         "type": "string",
-                        "enum": [
-                          "substantial",
-                          "notable",
-                          "slight"
-                        ]
+                        "enum": ["substantial", "notable", "slight"]
                       },
                       "likelihood_direction": {
                         "type": "string",
-                        "enum": [
-                          "lower",
-                          "higher",
-                          "unchanged"
-                        ]
+                        "enum": ["lower", "higher", "unchanged"]
                       },
                       "association_not_causal": {
                         "type": "boolean",
                         "const": true
                       }
                     },
-                    "required": [
-                      "feature_label",
-                      "direction",
-                      "association_not_causal"
-                    ]
+                    "required": ["feature_label", "direction", "association_not_causal"]
                   }
                 }
               },
-              "required": [
-                "entity_id",
-                "score",
-                "band",
-                "max_autonomy"
-              ]
+              "required": ["entity_id", "score", "band", "max_autonomy"]
             }
           },
           "honest_empty": {
@@ -1435,17 +843,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_provide_dataset_input": {
@@ -1502,17 +905,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_append_rows_input": {
@@ -1548,9 +946,7 @@
             "description": "Human-readable dataset name. Only read when a dataset is opened (chunk 0 with no dataset_id)."
           }
         },
-        "required": [
-          "chunk_index"
-        ],
+        "required": ["chunk_index"],
         "additionalProperties": false
       },
       "hs_append_rows_output": {
@@ -1594,17 +990,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_rank_topk_input": {
@@ -1661,13 +1052,7 @@
           },
           "subject_kind": {
             "type": "string",
-            "enum": [
-              "person",
-              "org",
-              "object",
-              "event",
-              "other"
-            ],
+            "enum": ["person", "org", "object", "event", "other"],
             "description": "What kind of thing each entity is. \"person\" enables decision-support safeguards."
           },
           "horizon": {
@@ -1754,21 +1139,12 @@
                 "description": "ISO-8601 cutoff. Omit and the engine computes it from your data and RETURNS it."
               }
             },
-            "required": [
-              "kind",
-              "version",
-              "roles"
-            ],
+            "required": ["kind", "version", "roles"],
             "additionalProperties": false,
             "description": "Reduce an EVENT table to one row per entity BEFORE ranking. Omit when your rows are already one per entity."
           }
         },
-        "required": [
-          "data",
-          "outcome_column",
-          "entity_column",
-          "subject_kind"
-        ],
+        "required": ["data", "outcome_column", "entity_column", "subject_kind"],
         "additionalProperties": false
       },
       "hs_rank_topk_output": {
@@ -1780,18 +1156,11 @@
           },
           "usability": {
             "type": "string",
-            "enum": [
-              "actionable",
-              "unjudged",
-              "refused"
-            ],
+            "enum": ["actionable", "unjudged", "refused"],
             "description": "READ THIS FIRST — it is the go/no-go, and gate_verdicts is a diagnostic beside it. \"actionable\": the engine judged this run and vouches for it. \"unjudged\": the engine could not APPLY its bar — an unanswered question, not a negative answer (typically a partitioned run below the row floor, where clearance_frequency.judgeable is 0 and model_ref and verdict are null). \"refused\": the bar was applied and nothing cleared. Act only on \"actionable\". An envelope with no usability field at all predates this contract and must be treated as \"unjudged\", never as actionable."
           },
           "model_ref": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "The fitted scorecard behind this ranking. Pass it to hs_score_entity to decide about a single entity. NULL means the engine minted none for this run — re-run rather than guessing a ref."
           },
           "entities": {
@@ -1806,38 +1175,21 @@
                   "type": "number"
                 },
                 "tier": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": ["string", "null"]
                 },
                 "band": {
                   "type": "string",
-                  "enum": [
-                    "act",
-                    "escalate",
-                    "refuse"
-                  ]
+                  "enum": ["act", "escalate", "refuse"]
                 },
                 "band_reason": {
                   "type": "string"
                 },
                 "max_autonomy": {
                   "type": "string",
-                  "enum": [
-                    "L0",
-                    "L1",
-                    "L2",
-                    "L3",
-                    "L4"
-                  ]
+                  "enum": ["L0", "L1", "L2", "L3", "L4"]
                 }
               },
-              "required": [
-                "entity_id",
-                "score",
-                "tier"
-              ],
+              "required": ["entity_id", "score", "tier"],
               "additionalProperties": true
             },
             "description": "The ranked page, highest likelihood first. band/max_autonomy say how much rope each entity earns; compare bands, never raw scores."
@@ -1869,11 +1221,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "protected",
-                  "signature",
-                  "kid"
-                ],
+                "required": ["protected", "signature", "kid"],
                 "additionalProperties": true
               },
               {
@@ -1888,11 +1236,7 @@
                 "properties": {
                   "pattern": {
                     "type": "string",
-                    "enum": [
-                      "unchanged",
-                      "changed",
-                      "no_prior"
-                    ]
+                    "enum": ["unchanged", "changed", "no_prior"]
                   },
                   "pattern_diff": {
                     "anyOf": [
@@ -1916,19 +1260,13 @@
                   },
                   "recommendation": {
                     "type": "string",
-                    "enum": [
-                      "keep",
-                      "refit",
-                      "abandon"
-                    ]
+                    "enum": ["keep", "refit", "abandon"]
                   },
                   "consecutive_honest_empty": {
                     "type": "number"
                   }
                 },
-                "required": [
-                  "pattern"
-                ],
+                "required": ["pattern"],
                 "additionalProperties": true
               },
               {
@@ -1965,11 +1303,7 @@
                         },
                         "reason": {
                           "type": "string",
-                          "enum": [
-                            "cleared",
-                            "below_bar",
-                            "no_holdout"
-                          ],
+                          "enum": ["cleared", "below_bar", "no_holdout"],
                           "description": "\"no_holdout\" means the draw was too small for the engine to hold rows back, so the bar was never applied — NOT that it failed."
                         },
                         "trust": {
@@ -1977,12 +1311,7 @@
                           "additionalProperties": {}
                         }
                       },
-                      "required": [
-                        "draw",
-                        "cleared",
-                        "reason",
-                        "trust"
-                      ],
+                      "required": ["draw", "cleared", "reason", "trust"],
                       "additionalProperties": true
                     }
                   },
@@ -1996,10 +1325,7 @@
                         "type": "boolean"
                       }
                     },
-                    "required": [
-                      "n_entities",
-                      "analysed"
-                    ],
+                    "required": ["n_entities", "analysed"],
                     "additionalProperties": true
                   },
                   "clearance_frequency": {
@@ -2015,11 +1341,7 @@
                         "type": "number"
                       }
                     },
-                    "required": [
-                      "cleared",
-                      "of",
-                      "judgeable"
-                    ],
+                    "required": ["cleared", "of", "judgeable"],
                     "additionalProperties": true,
                     "description": "Near the bar this, not a single verdict, is the label. `judgeable` counts the draws the bar could actually be applied to."
                   },
@@ -2033,17 +1355,10 @@
                         },
                         "direction": {
                           "type": "string",
-                          "enum": [
-                            "higher",
-                            "lower",
-                            "different"
-                          ]
+                          "enum": ["higher", "lower", "different"]
                         }
                       },
-                      "required": [
-                        "feature",
-                        "direction"
-                      ],
+                      "required": ["feature", "direction"],
                       "additionalProperties": true
                     },
                     "description": "Conditions present in BOTH cleared draws, same feature and same direction. Adopt only these. Empty unless both draws cleared."
@@ -2052,9 +1367,7 @@
                     "anyOf": [
                       {
                         "type": "string",
-                        "enum": [
-                          "borderline"
-                        ]
+                        "enum": ["borderline"]
                       },
                       {
                         "type": "null"
@@ -2087,10 +1400,7 @@
             ]
           },
           "top_decile_lift": {
-            "type": [
-              "number",
-              "null"
-            ]
+            "type": ["number", "null"]
           },
           "top_factors": {
             "anyOf": [
@@ -2114,9 +1424,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "coefficient"
-                ],
+                "required": ["coefficient"],
                 "additionalProperties": true
               },
               {
@@ -2133,33 +1441,22 @@
                     "type": "string"
                   },
                   "split_fraction": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "n_train": {
                     "type": "number"
                   },
                   "n_holdout": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "n_reserved_test": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "reason": {
                     "type": "string"
                   }
                 },
-                "required": [
-                  "scheme"
-                ],
+                "required": ["scheme"],
                 "additionalProperties": true
               },
               {
@@ -2190,17 +1487,10 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "leakage_suspected",
-                        "excluded",
-                        "advisory"
-                      ]
+                      "enum": ["leakage_suspected", "excluded", "advisory"]
                     }
                   },
-                  "required": [
-                    "column",
-                    "reason"
-                  ],
+                  "required": ["column", "reason"],
                   "additionalProperties": true
                 }
               },
@@ -2222,22 +1512,13 @@
                     "type": "number"
                   },
                   "median_rows_per_entity": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "share_repeated": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "scored_as": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": ["string", "null"]
                   }
                 },
                 "required": [
@@ -2277,12 +1558,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "k",
-              "offset",
-              "returned",
-              "total_ranked"
-            ],
+            "required": ["k", "offset", "returned", "total_ranked"],
             "additionalProperties": true
           },
           "next": {
@@ -2368,17 +1644,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_poll_task_input": {
@@ -2390,9 +1661,7 @@
             "description": "Task id returned by hs_rank_topk (dataset mode)."
           }
         },
-        "required": [
-          "task_id"
-        ],
+        "required": ["task_id"],
         "additionalProperties": false
       },
       "hs_poll_task_output": {
@@ -2404,18 +1673,11 @@
           },
           "usability": {
             "type": "string",
-            "enum": [
-              "actionable",
-              "unjudged",
-              "refused"
-            ],
+            "enum": ["actionable", "unjudged", "refused"],
             "description": "READ THIS FIRST — it is the go/no-go, and gate_verdicts is a diagnostic beside it. \"actionable\": the engine judged this run and vouches for it. \"unjudged\": the engine could not APPLY its bar — an unanswered question, not a negative answer (typically a partitioned run below the row floor, where clearance_frequency.judgeable is 0 and model_ref and verdict are null). \"refused\": the bar was applied and nothing cleared. Act only on \"actionable\". An envelope with no usability field at all predates this contract and must be treated as \"unjudged\", never as actionable."
           },
           "model_ref": {
-            "type": [
-              "string",
-              "null"
-            ],
+            "type": ["string", "null"],
             "description": "The fitted scorecard behind this ranking. Pass it to hs_score_entity to decide about a single entity. NULL means the engine minted none for this run — re-run rather than guessing a ref."
           },
           "entities": {
@@ -2430,38 +1692,21 @@
                   "type": "number"
                 },
                 "tier": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": ["string", "null"]
                 },
                 "band": {
                   "type": "string",
-                  "enum": [
-                    "act",
-                    "escalate",
-                    "refuse"
-                  ]
+                  "enum": ["act", "escalate", "refuse"]
                 },
                 "band_reason": {
                   "type": "string"
                 },
                 "max_autonomy": {
                   "type": "string",
-                  "enum": [
-                    "L0",
-                    "L1",
-                    "L2",
-                    "L3",
-                    "L4"
-                  ]
+                  "enum": ["L0", "L1", "L2", "L3", "L4"]
                 }
               },
-              "required": [
-                "entity_id",
-                "score",
-                "tier"
-              ],
+              "required": ["entity_id", "score", "tier"],
               "additionalProperties": true
             },
             "description": "The ranked page, highest likelihood first. band/max_autonomy say how much rope each entity earns; compare bands, never raw scores."
@@ -2493,11 +1738,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "protected",
-                  "signature",
-                  "kid"
-                ],
+                "required": ["protected", "signature", "kid"],
                 "additionalProperties": true
               },
               {
@@ -2512,11 +1753,7 @@
                 "properties": {
                   "pattern": {
                     "type": "string",
-                    "enum": [
-                      "unchanged",
-                      "changed",
-                      "no_prior"
-                    ]
+                    "enum": ["unchanged", "changed", "no_prior"]
                   },
                   "pattern_diff": {
                     "anyOf": [
@@ -2540,19 +1777,13 @@
                   },
                   "recommendation": {
                     "type": "string",
-                    "enum": [
-                      "keep",
-                      "refit",
-                      "abandon"
-                    ]
+                    "enum": ["keep", "refit", "abandon"]
                   },
                   "consecutive_honest_empty": {
                     "type": "number"
                   }
                 },
-                "required": [
-                  "pattern"
-                ],
+                "required": ["pattern"],
                 "additionalProperties": true
               },
               {
@@ -2589,11 +1820,7 @@
                         },
                         "reason": {
                           "type": "string",
-                          "enum": [
-                            "cleared",
-                            "below_bar",
-                            "no_holdout"
-                          ],
+                          "enum": ["cleared", "below_bar", "no_holdout"],
                           "description": "\"no_holdout\" means the draw was too small for the engine to hold rows back, so the bar was never applied — NOT that it failed."
                         },
                         "trust": {
@@ -2601,12 +1828,7 @@
                           "additionalProperties": {}
                         }
                       },
-                      "required": [
-                        "draw",
-                        "cleared",
-                        "reason",
-                        "trust"
-                      ],
+                      "required": ["draw", "cleared", "reason", "trust"],
                       "additionalProperties": true
                     }
                   },
@@ -2620,10 +1842,7 @@
                         "type": "boolean"
                       }
                     },
-                    "required": [
-                      "n_entities",
-                      "analysed"
-                    ],
+                    "required": ["n_entities", "analysed"],
                     "additionalProperties": true
                   },
                   "clearance_frequency": {
@@ -2639,11 +1858,7 @@
                         "type": "number"
                       }
                     },
-                    "required": [
-                      "cleared",
-                      "of",
-                      "judgeable"
-                    ],
+                    "required": ["cleared", "of", "judgeable"],
                     "additionalProperties": true,
                     "description": "Near the bar this, not a single verdict, is the label. `judgeable` counts the draws the bar could actually be applied to."
                   },
@@ -2657,17 +1872,10 @@
                         },
                         "direction": {
                           "type": "string",
-                          "enum": [
-                            "higher",
-                            "lower",
-                            "different"
-                          ]
+                          "enum": ["higher", "lower", "different"]
                         }
                       },
-                      "required": [
-                        "feature",
-                        "direction"
-                      ],
+                      "required": ["feature", "direction"],
                       "additionalProperties": true
                     },
                     "description": "Conditions present in BOTH cleared draws, same feature and same direction. Adopt only these. Empty unless both draws cleared."
@@ -2676,9 +1884,7 @@
                     "anyOf": [
                       {
                         "type": "string",
-                        "enum": [
-                          "borderline"
-                        ]
+                        "enum": ["borderline"]
                       },
                       {
                         "type": "null"
@@ -2711,10 +1917,7 @@
             ]
           },
           "top_decile_lift": {
-            "type": [
-              "number",
-              "null"
-            ]
+            "type": ["number", "null"]
           },
           "top_factors": {
             "anyOf": [
@@ -2738,9 +1941,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "coefficient"
-                ],
+                "required": ["coefficient"],
                 "additionalProperties": true
               },
               {
@@ -2757,33 +1958,22 @@
                     "type": "string"
                   },
                   "split_fraction": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "n_train": {
                     "type": "number"
                   },
                   "n_holdout": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "n_reserved_test": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "reason": {
                     "type": "string"
                   }
                 },
-                "required": [
-                  "scheme"
-                ],
+                "required": ["scheme"],
                 "additionalProperties": true
               },
               {
@@ -2814,17 +2004,10 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "leakage_suspected",
-                        "excluded",
-                        "advisory"
-                      ]
+                      "enum": ["leakage_suspected", "excluded", "advisory"]
                     }
                   },
-                  "required": [
-                    "column",
-                    "reason"
-                  ],
+                  "required": ["column", "reason"],
                   "additionalProperties": true
                 }
               },
@@ -2846,22 +2029,13 @@
                     "type": "number"
                   },
                   "median_rows_per_entity": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "share_repeated": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "scored_as": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": ["string", "null"]
                   }
                 },
                 "required": [
@@ -2901,12 +2075,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "k",
-              "offset",
-              "returned",
-              "total_ranked"
-            ],
+            "required": ["k", "offset", "returned", "total_ranked"],
             "additionalProperties": true
           },
           "next": {
@@ -2979,17 +2148,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_model_quality_input": {
@@ -3001,9 +2165,7 @@
             "description": "The ranking_ref from a prior hs_rank_topk result."
           }
         },
-        "required": [
-          "ranking_ref"
-        ],
+        "required": ["ranking_ref"],
         "additionalProperties": false
       },
       "hs_model_quality_output": {
@@ -3013,16 +2175,10 @@
             "type": "string"
           },
           "top_decile_lift": {
-            "type": [
-              "number",
-              "null"
-            ]
+            "type": ["number", "null"]
           },
           "calibration_error": {
-            "type": [
-              "number",
-              "null"
-            ]
+            "type": ["number", "null"]
           },
           "validation": {
             "anyOf": [
@@ -3033,33 +2189,22 @@
                     "type": "string"
                   },
                   "split_fraction": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "n_train": {
                     "type": "number"
                   },
                   "n_holdout": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "n_reserved_test": {
-                    "type": [
-                      "number",
-                      "null"
-                    ]
+                    "type": ["number", "null"]
                   },
                   "reason": {
                     "type": "string"
                   }
                 },
-                "required": [
-                  "scheme"
-                ],
+                "required": ["scheme"],
                 "additionalProperties": true
               },
               {
@@ -3082,10 +2227,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "decile",
-                    "cum_lift"
-                  ],
+                  "required": ["decile", "cum_lift"],
                   "additionalProperties": true
                 }
               },
@@ -3110,17 +2252,10 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": [
-                        "leakage_suspected",
-                        "excluded",
-                        "advisory"
-                      ]
+                      "enum": ["leakage_suspected", "excluded", "advisory"]
                     }
                   },
-                  "required": [
-                    "column",
-                    "reason"
-                  ],
+                  "required": ["column", "reason"],
                   "additionalProperties": true
                 }
               },
@@ -3147,17 +2282,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_explain_drivers_input": {
@@ -3169,9 +2299,7 @@
             "description": "The ranking_ref from a prior hs_rank_topk result."
           }
         },
-        "required": [
-          "ranking_ref"
-        ],
+        "required": ["ranking_ref"],
         "additionalProperties": false
       },
       "hs_explain_drivers_output": {
@@ -3203,17 +2331,10 @@
                     },
                     "direction": {
                       "type": "string",
-                      "enum": [
-                        "higher",
-                        "lower",
-                        "different"
-                      ]
+                      "enum": ["higher", "lower", "different"]
                     },
                     "threshold": {
-                      "type": [
-                        "number",
-                        "null"
-                      ]
+                      "type": ["number", "null"]
                     },
                     "operator": {
                       "type": "string",
@@ -3230,37 +2351,22 @@
                     },
                     "category_match": {
                       "type": "string",
-                      "enum": [
-                        "is_one_of",
-                        "is_not_one_of"
-                      ],
+                      "enum": ["is_one_of", "is_not_one_of"],
                       "description": "Read literally and never drop the negation: \"is_not_one_of\" names the opposite cohort from \"is_one_of\"."
                     }
                   },
-                  "required": [
-                    "feature",
-                    "direction",
-                    "threshold"
-                  ],
+                  "required": ["feature", "direction", "threshold"],
                   "additionalProperties": true
                 }
               },
               "coverage": {
-                "type": [
-                  "number",
-                  "null"
-                ]
+                "type": ["number", "null"]
               },
               "lift": {
-                "type": [
-                  "number",
-                  "null"
-                ]
+                "type": ["number", "null"]
               }
             },
-            "required": [
-              "found"
-            ],
+            "required": ["found"],
             "additionalProperties": true,
             "description": "ONE joint pattern. Read the conditions as a single combination; never rank them or report one alone."
           },
@@ -3274,17 +2380,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_explain_levers_input": {
@@ -3305,10 +2406,7 @@
             "description": "Entities from that ranking to explain (max 20 per call)."
           }
         },
-        "required": [
-          "ranking_ref",
-          "entity_ids"
-        ],
+        "required": ["ranking_ref", "entity_ids"],
         "additionalProperties": false
       },
       "hs_explain_levers_output": {
@@ -3343,35 +2441,20 @@
                       },
                       "direction": {
                         "type": "string",
-                        "enum": [
-                          "increase",
-                          "decrease",
-                          "change"
-                        ]
+                        "enum": ["increase", "decrease", "change"]
                       }
                     },
-                    "required": [
-                      "feature",
-                      "direction"
-                    ],
+                    "required": ["feature", "direction"],
                     "additionalProperties": true
                   }
                 },
                 "magnitude": {
                   "type": "string",
-                  "enum": [
-                    "substantial",
-                    "notable",
-                    "slight"
-                  ]
+                  "enum": ["substantial", "notable", "slight"]
                 },
                 "likelihood_direction": {
                   "type": "string",
-                  "enum": [
-                    "lower",
-                    "higher",
-                    "unchanged"
-                  ],
+                  "enum": ["lower", "higher", "unchanged"],
                   "description": "Which way this change moves PREDICTED LIKELIHOOD. A fact, not a recommendation, and NOT fixed to \"lower\" — read it per lever."
                 },
                 "association_not_causal": {
@@ -3414,17 +2497,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "provenance"
-        ],
+        "required": ["provenance"],
         "additionalProperties": true
       },
       "hs_context_brief_input": {
@@ -3437,16 +2515,11 @@
           },
           "format": {
             "type": "string",
-            "enum": [
-              "json",
-              "markdown"
-            ],
+            "enum": ["json", "markdown"],
             "description": "Output format. Both carry identical numbers; markdown is prose for a human or for a prompt. Default json."
           }
         },
-        "required": [
-          "ranking_ref"
-        ],
+        "required": ["ranking_ref"],
         "additionalProperties": false
       },
       "hs_context_brief_output": {
@@ -3458,11 +2531,7 @@
           },
           "usability": {
             "type": "string",
-            "enum": [
-              "actionable",
-              "unjudged",
-              "refused"
-            ],
+            "enum": ["actionable", "unjudged", "refused"],
             "description": "READ THIS FIRST. \"actionable\": the engine judged this run and vouches for it. \"unjudged\": the engine could not APPLY its bar — an unanswered question, not a negative answer. \"refused\": the bar was applied and nothing cleared. Act only on \"actionable\"; a brief with no usability field predates this contract and must be read as \"unjudged\"."
           },
           "provenance": {
@@ -3478,56 +2547,33 @@
                 "type": "string"
               },
               "series_key": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               },
               "computed_at": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash",
-              "ranking_ref",
-              "series_key",
-              "computed_at"
-            ],
+            "required": ["engine_version", "core_hash", "ranking_ref", "series_key", "computed_at"],
             "additionalProperties": false
           },
           "outcome": {
             "type": "object",
             "properties": {
               "label": {
-                "type": [
-                  "string",
-                  "null"
-                ]
+                "type": ["string", "null"]
               }
             },
-            "required": [
-              "label"
-            ],
+            "required": ["label"],
             "additionalProperties": false
           },
           "trust": {
             "type": "object",
             "properties": {
               "top_decile_lift": {
-                "type": [
-                  "number",
-                  "null"
-                ]
+                "type": ["number", "null"]
               },
               "calibration_error": {
-                "type": [
-                  "number",
-                  "null"
-                ]
+                "type": ["number", "null"]
               },
               "validation": {
                 "anyOf": [
@@ -3538,25 +2584,16 @@
                         "type": "string"
                       },
                       "split_fraction": {
-                        "type": [
-                          "number",
-                          "null"
-                        ]
+                        "type": ["number", "null"]
                       },
                       "n_train": {
                         "type": "number"
                       },
                       "n_holdout": {
-                        "type": [
-                          "number",
-                          "null"
-                        ]
+                        "type": ["number", "null"]
                       },
                       "n_reserved_test": {
-                        "type": [
-                          "number",
-                          "null"
-                        ]
+                        "type": ["number", "null"]
                       },
                       "reason": {
                         "type": "string"
@@ -3594,10 +2631,7 @@
                           "description": "The quarantine tier, carried from the ranking: \"leakage_suspected\" is a reason to stop; \"excluded\" is a routine identifier/date column and is not."
                         }
                       },
-                      "required": [
-                        "column",
-                        "reason"
-                      ],
+                      "required": ["column", "reason"],
                       "additionalProperties": false
                     }
                   },
@@ -3623,11 +2657,7 @@
                     "type": "number"
                   }
                 },
-                "required": [
-                  "cleared",
-                  "of",
-                  "judgeable"
-                ],
+                "required": ["cleared", "of", "judgeable"],
                 "additionalProperties": false,
                 "description": "Present only when the ranking was partitioned. `judgeable` counts the draws the bar could actually be applied to — 0 means the question could not be asked, which is not the same as a no."
               }
@@ -3662,11 +2692,7 @@
                     },
                     "direction": {
                       "type": "string",
-                      "enum": [
-                        "higher",
-                        "lower",
-                        "different"
-                      ]
+                      "enum": ["higher", "lower", "different"]
                     },
                     "categories": {
                       "type": "array",
@@ -3676,16 +2702,10 @@
                     },
                     "category_match": {
                       "type": "string",
-                      "enum": [
-                        "is_one_of",
-                        "is_not_one_of"
-                      ]
+                      "enum": ["is_one_of", "is_not_one_of"]
                     }
                   },
-                  "required": [
-                    "label",
-                    "direction"
-                  ],
+                  "required": ["label", "direction"],
                   "additionalProperties": false
                 }
               },
@@ -3693,12 +2713,7 @@
                 "type": "string"
               }
             },
-            "required": [
-              "interpretation",
-              "evaluate_as_a_unit",
-              "drivers",
-              "guidance"
-            ],
+            "required": ["interpretation", "evaluate_as_a_unit", "drivers", "guidance"],
             "additionalProperties": false
           },
           "limits": {
@@ -3712,10 +2727,7 @@
                 "type": "string"
               }
             },
-            "required": [
-              "decision_support_only",
-              "regulated_domains"
-            ],
+            "required": ["decision_support_only", "regulated_domains"],
             "additionalProperties": false
           },
           "honest_empty_note": {
@@ -3742,11 +2754,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "file",
-              "warehouse",
-              "event_stream"
-            ],
+            "enum": ["file", "warehouse", "event_stream"],
             "description": "What the source is. `file`: a table already registered through hs_provide_dataset / hs_append_rows — pass its dataset_id and the rows become this source's data. `warehouse` and `event_stream`: registered by contract only; the connection and the stream arrive through the console."
           },
           "name": {
@@ -3769,10 +2777,7 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": true,
-                  "required": [
-                    "name",
-                    "logical_type"
-                  ],
+                  "required": ["name", "logical_type"],
                   "properties": {
                     "name": {
                       "type": "string"
@@ -3823,30 +2828,18 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": true,
-                  "required": [
-                    "name",
-                    "semantics"
-                  ],
+                  "required": ["name", "semantics"],
                   "properties": {
                     "name": {
                       "type": "string"
                     },
                     "semantics": {
                       "type": "string",
-                      "enum": [
-                        "event",
-                        "ingest",
-                        "unknown"
-                      ]
+                      "enum": ["event", "ingest", "unknown"]
                     },
                     "timezone": {
                       "type": "string",
-                      "enum": [
-                        "utc",
-                        "offset",
-                        "naive",
-                        "unknown"
-                      ]
+                      "enum": ["utc", "offset", "naive", "unknown"]
                     },
                     "format": {
                       "type": "string"
@@ -3861,26 +2854,17 @@
                 "type": "object",
                 "properties": {
                   "earliest": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": ["string", "null"]
                   },
                   "latest": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
+                    "type": ["string", "null"]
                   }
                 }
               }
             }
           }
         },
-        "required": [
-          "kind",
-          "name"
-        ],
+        "required": ["kind", "name"],
         "additionalProperties": false
       },
       "hs_register_source_output": {
@@ -3892,30 +2876,18 @@
           },
           "kind": {
             "type": "string",
-            "enum": [
-              "file",
-              "warehouse",
-              "event_stream"
-            ]
+            "enum": ["file", "warehouse", "event_stream"]
           },
           "name": {
             "type": "string"
           },
           "status": {
             "type": "string",
-            "enum": [
-              "pending",
-              "ingesting",
-              "ready",
-              "failed"
-            ],
+            "enum": ["pending", "ingesting", "ready", "failed"],
             "description": "`ready` when the source has data behind it (a file's rows landed); `pending` for a contract-only registration awaiting its connection."
           },
           "contract": {
-            "type": [
-              "object",
-              "null"
-            ],
+            "type": ["object", "null"],
             "description": "The contract as stored — the caller's, or null until profiling fills it in."
           },
           "next": {
@@ -3931,21 +2903,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "source_id",
-          "kind",
-          "name",
-          "status",
-          "provenance"
-        ],
+        "required": ["source_id", "kind", "name", "status", "provenance"],
         "additionalProperties": true
       },
       "hs_propose_binding_input": {
@@ -3962,17 +2925,11 @@
           },
           "polarity": {
             "type": "string",
-            "enum": [
-              "desirable",
-              "adverse",
-              "undeclared"
-            ],
+            "enum": ["desirable", "adverse", "undeclared"],
             "description": "Whether the outcome is one you WANT (converted, renewed) or one you want to avoid (churned, defaulted). Declared by you and recorded on the binding; the engine reports direction and never infers this."
           }
         },
-        "required": [
-          "source_ids"
-        ],
+        "required": ["source_ids"],
         "additionalProperties": false
       },
       "hs_propose_binding_output": {
@@ -3984,11 +2941,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "proposed",
-              "settled",
-              "empty"
-            ],
+            "enum": ["proposed", "settled", "empty"],
             "description": "`settled`: every decision point had a lone survivor — confirm now. `proposed`: one or more questions are open. `empty`: a required point had no candidate; see `empties`."
           },
           "questions": {
@@ -3997,12 +2950,7 @@
             "items": {
               "type": "object",
               "additionalProperties": true,
-              "required": [
-                "id",
-                "point",
-                "question",
-                "options"
-              ],
+              "required": ["id", "point", "question", "options"],
               "properties": {
                 "id": {
                   "type": "string"
@@ -4012,13 +2960,7 @@
                 },
                 "point": {
                   "type": "string",
-                  "enum": [
-                    "entity",
-                    "time_axis",
-                    "join",
-                    "reading",
-                    "outcome"
-                  ]
+                  "enum": ["entity", "time_axis", "join", "reading", "outcome"]
                 },
                 "question": {
                   "type": "string"
@@ -4031,10 +2973,7 @@
                   "items": {
                     "type": "object",
                     "additionalProperties": true,
-                    "required": [
-                      "key",
-                      "label"
-                    ],
+                    "required": ["key", "label"],
                     "properties": {
                       "key": {
                         "type": "string"
@@ -4057,10 +2996,7 @@
             "items": {
               "type": "object",
               "additionalProperties": true,
-              "required": [
-                "point",
-                "value"
-              ],
+              "required": ["point", "value"],
               "properties": {
                 "point": {
                   "type": "string"
@@ -4108,11 +3044,7 @@
             "items": {
               "type": "object",
               "additionalProperties": true,
-              "required": [
-                "column",
-                "status",
-                "reason"
-              ],
+              "required": ["column", "status", "reason"],
               "properties": {
                 "source_id": {
                   "type": "string"
@@ -4122,11 +3054,7 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": [
-                    "excluded",
-                    "leakage suspected",
-                    "rejected"
-                  ]
+                  "enum": ["excluded", "leakage suspected", "rejected"]
                 },
                 "reason": {
                   "type": "string"
@@ -4147,22 +3075,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "binding_id",
-          "status",
-          "questions",
-          "settled",
-          "rejections",
-          "provenance"
-        ],
+        "required": ["binding_id", "status", "questions", "settled", "rejections", "provenance"],
         "additionalProperties": true
       },
       "hs_confirm_binding_input": {
@@ -4180,9 +3098,7 @@
             "description": "question id → option key, for every open question hs_propose_binding returned. A key the engine did not offer is refused (422 unknown_option)."
           }
         },
-        "required": [
-          "binding_id"
-        ],
+        "required": ["binding_id"],
         "additionalProperties": false
       },
       "hs_confirm_binding_output": {
@@ -4193,11 +3109,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "confirmed",
-              "not_runnable",
-              "empty"
-            ],
+            "enum": ["confirmed", "not_runnable", "empty"],
             "description": "`confirmed`: the binding has a binding_ref and a bound dataset. `not_runnable`: the picks joined, but the outcome did not pass the gate on the frame the engine would run (the reason says why). `empty`: the reading reduced the frame to nothing."
           },
           "binding_ref": {
@@ -4216,22 +3128,14 @@
             "items": {
               "type": "object",
               "additionalProperties": true,
-              "required": [
-                "column",
-                "status",
-                "reason"
-              ],
+              "required": ["column", "status", "reason"],
               "properties": {
                 "column": {
                   "type": "string"
                 },
                 "status": {
                   "type": "string",
-                  "enum": [
-                    "leakage_suspected",
-                    "excluded",
-                    "advisory"
-                  ]
+                  "enum": ["leakage_suspected", "excluded", "advisory"]
                 },
                 "reason": {
                   "type": "string"
@@ -4241,10 +3145,7 @@
             "description": "Per-column entries in the engine's vocabulary: `leakage_suspected` (a column that alone separates the outcome almost perfectly — usually known only after it), `excluded` (structural), `advisory` (not removed; a person should check). An advisory opens an analyst pass in the console."
           },
           "as_of": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "outcome": {
             "type": "object",
@@ -4287,19 +3188,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "binding_id",
-          "status",
-          "provenance"
-        ],
+        "required": ["binding_id", "status", "provenance"],
         "additionalProperties": true
       },
       "hs_get_binding_input": {
@@ -4323,27 +3217,18 @@
             "type": "string"
           },
           "binding_ref": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "status": {
             "type": "string"
           },
           "document": {
-            "type": [
-              "object",
-              "null"
-            ],
+            "type": ["object", "null"],
             "additionalProperties": true,
             "description": "The confirmed entity binding (dg.binding.v1): sources, identity, join_plan, time_axis, reading, outcome, polarity, as_of_policy. Null until confirmed."
           },
           "manifest": {
-            "type": [
-              "object",
-              "null"
-            ],
+            "type": ["object", "null"],
             "additionalProperties": {
               "type": "string"
             }
@@ -4356,10 +3241,7 @@
             }
           },
           "as_of": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "questions": {
             "type": "array",
@@ -4381,19 +3263,13 @@
                   "type": "string"
                 },
                 "replaces": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": ["string", "null"]
                 },
                 "created_at": {
                   "type": "string"
                 },
                 "diff": {
-                  "type": [
-                    "object",
-                    "null"
-                  ],
+                  "type": ["object", "null"],
                   "additionalProperties": true
                 }
               }
@@ -4409,19 +3285,12 @@
                 "type": "string"
               }
             },
-            "required": [
-              "engine_version",
-              "core_hash"
-            ],
+            "required": ["engine_version", "core_hash"],
             "additionalProperties": false,
             "description": "The engine build that produced these facts. Present on every response."
           }
         },
-        "required": [
-          "binding_id",
-          "status",
-          "provenance"
-        ],
+        "required": ["binding_id", "status", "provenance"],
         "additionalProperties": true
       },
       "hs_ingest_events_input": {
@@ -4435,18 +3304,11 @@
             "items": {
               "type": "object",
               "additionalProperties": true,
-              "required": [
-                "specversion",
-                "id",
-                "source",
-                "type"
-              ],
+              "required": ["specversion", "id", "source", "type"],
               "properties": {
                 "specversion": {
                   "type": "string",
-                  "enum": [
-                    "1.0"
-                  ]
+                  "enum": ["1.0"]
                 },
                 "id": {
                   "type": "string",
@@ -4482,9 +3344,7 @@
             }
           }
         },
-        "required": [
-          "events"
-        ],
+        "required": ["events"],
         "additionalProperties": false
       },
       "hs_ingest_events_output": {
@@ -4503,11 +3363,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": [
-                "id",
-                "type",
-                "status"
-              ],
+              "required": ["id", "type", "status"],
               "properties": {
                 "id": {
                   "type": "string"
@@ -4517,22 +3373,13 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": [
-                    "accepted",
-                    "duplicate",
-                    "held"
-                  ]
+                  "enum": ["accepted", "duplicate", "held"]
                 }
               }
             }
           }
         },
-        "required": [
-          "accepted",
-          "duplicates",
-          "held",
-          "events"
-        ]
+        "required": ["accepted", "duplicates", "held", "events"]
       },
       "hs_set_policy_input": {
         "type": "object",
@@ -4559,18 +3406,12 @@
             "properties": {
               "version": {
                 "type": "string",
-                "enum": [
-                  "dg.policy.v1"
-                ]
+                "enum": ["dg.policy.v1"]
               },
               "unit": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "symbol",
-                  "per",
-                  "decimals"
-                ],
+                "required": ["symbol", "per", "decimals"],
                 "properties": {
                   "symbol": {
                     "type": "string",
@@ -4604,10 +3445,7 @@
               "c_human_by": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "attr",
-                  "values"
-                ],
+                "required": ["attr", "values"],
                 "properties": {
                   "attr": {
                     "type": "string",
@@ -4628,10 +3466,7 @@
               "c_fail_by": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "attr",
-                  "values"
-                ],
+                "required": ["attr", "values"],
                 "properties": {
                   "attr": {
                     "type": "string",
@@ -4657,10 +3492,7 @@
               "review_catch_by": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "attr",
-                  "values"
-                ],
+                "required": ["attr", "values"],
                 "properties": {
                   "attr": {
                     "type": "string",
@@ -4681,10 +3513,7 @@
               "human_model": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "floor",
-                  "slope"
-                ],
+                "required": ["floor", "slope"],
                 "properties": {
                   "floor": {
                     "type": "number",
@@ -4700,9 +3529,7 @@
               },
               "no_call": {
                 "type": "string",
-                "enum": [
-                  "existing_policy"
-                ],
+                "enum": ["existing_policy"],
                 "description": "What happens when the record makes no call: the existing policy (the only option until a connector signal exists)."
               },
               "control_fraction": {
@@ -4714,9 +3541,7 @@
             }
           }
         },
-        "required": [
-          "policy"
-        ],
+        "required": ["policy"],
         "additionalProperties": false
       },
       "hs_set_policy_output": {
@@ -4729,19 +3554,13 @@
             "type": "boolean"
           },
           "replaces": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": ["string", "null"]
           },
           "version_count": {
             "type": "integer"
           }
         },
-        "required": [
-          "policy_ref",
-          "changed"
-        ]
+        "required": ["policy_ref", "changed"]
       },
       "hs_get_policy_input": {
         "type": "object",
@@ -4769,10 +3588,7 @@
         "properties": {
           "result": {
             "type": "string",
-            "enum": [
-              "ok",
-              "none"
-            ]
+            "enum": ["ok", "none"]
           },
           "policy_ref": {
             "type": "string"
@@ -4792,26 +3608,207 @@
                   "type": "object"
                 },
                 "threshold": {
-                  "type": [
-                    "number",
-                    "null"
-                  ]
+                  "type": ["number", "null"]
                 },
                 "label": {
                   "type": "string"
                 },
                 "missing": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
+                  "type": ["string", "null"]
                 }
               }
             }
           }
         },
+        "required": ["result"]
+      },
+      "hs_decide_input": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The governed agent (the case binding's agent id)."
+          },
+          "case": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["opened_at"],
+            "properties": {
+              "case_id": {
+                "type": "string",
+                "description": "Your case key (a ticket, a PR, an order). Omit and the worker mints one — carry the returned case_ref."
+              },
+              "kind": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Kind-of-work attribute values, e.g. { service: 'billing-api', size: 'L' }. The record is per exact kind."
+              },
+              "actor": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["agent", "human"]
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "opened_at": {
+                "type": "string",
+                "description": "RFC 3339 instant the case opened; priors are strictly earlier than this."
+              }
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["shadow", "live", "smoke"],
+            "description": "Omit to use the agent's mode. shadow: the record's answer with route none; live: route = lane; smoke: a signed receipt, nothing written to the ledger."
+          },
+          "model_ref": {
+            "type": "string",
+            "description": "A cleared scorecard for band / autonomy; omit to use the binding's."
+          },
+          "open_levers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["lever_id"],
+              "properties": {
+                "lever_id": {
+                  "type": "string"
+                },
+                "kind_hash": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Open levers (unit 19): the worker assigns the arm by case-id parity and puts lever_id / lever_arm on the receipt."
+          },
+          "abandoned": {
+            "type": "boolean",
+            "description": "Unit 20 passes true when the analysis was abandoned: forces none with reason abandoned."
+          }
+        },
+        "required": ["agent_id", "case"],
+        "additionalProperties": false
+      },
+      "hs_decide_output": {
+        "type": "object",
+        "properties": {
+          "verdict_id": {
+            "type": "string"
+          },
+          "case_id": {
+            "type": "string"
+          },
+          "case_ref": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["shadow", "live", "smoke"]
+          },
+          "applied": {
+            "type": "boolean"
+          },
+          "route": {
+            "type": "string",
+            "enum": ["act", "review", "human", "none"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["control", "no_record", "abandoned", "shadow", "smoke"]
+          },
+          "record": {
+            "type": "object",
+            "properties": {
+              "n": {
+                "type": "integer"
+              },
+              "f": {
+                "type": "integer"
+              }
+            }
+          },
+          "interval": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "cheapest_at_lo": {
+            "type": ["string", "null"]
+          },
+          "cheapest_at_hi": {
+            "type": ["string", "null"]
+          },
+          "lane": {
+            "type": "string",
+            "enum": ["act", "review", "human", "none"]
+          },
+          "band": {
+            "type": "string"
+          },
+          "max_autonomy": {
+            "type": "string"
+          },
+          "likelihood_direction": {
+            "type": "string",
+            "enum": ["lower", "higher", "unchanged"]
+          },
+          "control": {
+            "type": "boolean"
+          },
+          "link_status": {
+            "type": "string"
+          },
+          "lever_id": {
+            "type": "string"
+          },
+          "lever_arm": {
+            "type": "string",
+            "enum": ["treat", "control"]
+          },
+          "lever_kind_hash": {
+            "type": ["string", "null"]
+          },
+          "binding_ref": {
+            "type": "string"
+          },
+          "policy_ref": {
+            "type": "string"
+          },
+          "core_hash": {
+            "type": "string"
+          },
+          "engine_version": {
+            "type": "string"
+          },
+          "signed_at": {
+            "type": "string"
+          },
+          "signature": {
+            "type": ["object", "null"]
+          }
+        },
         "required": [
-          "result"
+          "verdict_id",
+          "case_ref",
+          "lane",
+          "route",
+          "band",
+          "max_autonomy",
+          "applied",
+          "record",
+          "interval"
         ]
       }
     }

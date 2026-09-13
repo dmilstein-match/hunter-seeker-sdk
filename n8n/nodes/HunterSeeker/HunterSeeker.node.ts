@@ -66,7 +66,14 @@ const OPS = {
   // — govern, contract 2.4.0: the cost table —
   setPolicy: { path: "/v1/set-policy", label: "Set the policy (free)", cost: "free" },
   getPolicy: { path: "/v1/get-policy", label: "Get the policy (free)", cost: "free" },
+  // — govern, contract 2.5.0: one decision for a case —
+  decide: { path: "/v1/decide", label: "Decide (one decision)", cost: "one decision" },
 } as const;
+
+/** The receipt's `route` is what a workflow branches on (never `lane`); the ports are its values. */
+const ROUTES = ["act", "review", "human", "none"] as const;
+const TWO_PORTS = [{ type: "main", displayName: "Result" }, { type: "main", displayName: "No finding" }];
+const DECIDE_PORTS = ROUTES.map((r) => ({ type: "main", displayName: r }));
 
 type Op = keyof typeof OPS;
 
@@ -93,8 +100,9 @@ export class HunterSeeker implements INodeType {
     // looks exactly like a finding and a workflow either treats it as one or, worse, someone wires
     // a retry loop around it — retrying a deterministic refusal forever. A branch lets a builder
     // route it: "no finding" is a path you design for, not an error you swallow.
-    outputs: ["main", "main"],
-    outputNames: ["Result", "No finding"],
+    // Decide branches on the receipt's `route` instead: four ports (act, review, human, none), the
+    // way n8n's own Switch node declares its outputs — an expression on the chosen operation.
+    outputs: `={{ $parameter["operation"] === "decide" ? ${JSON.stringify(DECIDE_PORTS)} : ${JSON.stringify(TWO_PORTS)} }}`,
     usableAsTool: true,
     credentials: [{ name: "hunterSeekerApi", required: true }],
     properties: [
@@ -272,6 +280,13 @@ export class HunterSeeker implements INodeType {
       // ── the cost table (contract 2.4.0) ───────────────────────────────────────────────────
       { displayName: "Agent ID", name: "policyAgentId", type: "string", default: "", ...show("setPolicy", "getPolicy"), description: "The agent the table belongs to; empty for the workspace's default table." },
       { displayName: "Policy (JSON)", name: "policy", type: "json", default: "{}", ...show("setPolicy"), description: "The cost table: unit, c_act, c_review, c_human_by, c_fail_by, c_redo, review_catch_by, human_model, no_call, control_fraction. Every cell is yours; nothing is pre-filled." },
+      // — decide (2.5.0) —
+      { displayName: "Agent ID", name: "decideAgentId", type: "string", default: "", required: true, ...show("decide"), description: "The governed agent (the case binding's agent id)." },
+      { displayName: "Case (JSON)", name: "decideCase", type: "json", default: '{"kind": {}, "actor": {"kind": "agent"}, "opened_at": ""}', ...show("decide"), description: "{case_id?, kind: {attr: value}, actor: {kind, name}, opened_at}. Priors are strictly earlier than opened_at." },
+      { displayName: "Mode", name: "decideMode", type: "options", default: "", ...show("decide"), options: [{ name: "The agent's mode", value: "" }, { name: "shadow", value: "shadow" }, { name: "live", value: "live" }, { name: "smoke", value: "smoke" }], description: "shadow: the record's answer with route none; live: route = lane; smoke: a signed receipt, nothing written." },
+      { displayName: "Model ref", name: "decideModelRef", type: "string", default: "", ...show("decide"), description: "A cleared scorecard for band / autonomy; empty for the binding's." },
+      { displayName: "Open levers (JSON)", name: "decideOpenLevers", type: "json", default: "[]", ...show("decide"), description: "[{lever_id, kind_hash?}] — the worker assigns the arm and puts lever_id / lever_arm on the receipt." },
+      { displayName: "Abandoned", name: "decideAbandoned", type: "boolean", default: false, ...show("decide"), description: "The analysis was abandoned: forces none with reason abandoned." },
       { displayName: "Kinds (JSON)", name: "policyKinds", type: "json", default: "[]", ...show("getPolicy"), description: "Kinds of work to evaluate: [{ service: 'payments-api', size: 'L' }] — each comes back with its unattended threshold or the missing cell." },
 
       // ── score ─────────────────────────────────────────────────────────────────────────────
@@ -358,6 +373,8 @@ export class HunterSeeker implements INodeType {
     const items = this.getInputData();
     const out: INodeExecutionData[] = [];
     const empty: INodeExecutionData[] = [];
+    const routed: INodeExecutionData[][] = ROUTES.map(() => []);
+    let decided = false;
     const creds = (await this.getCredentials("hunterSeekerApi")) as { baseUrl: string };
 
     /** One authenticated POST to the API. Every operation goes through here. */
@@ -577,15 +594,35 @@ export class HunterSeeker implements INodeType {
           body = { ...opt("agent_id", p("policyAgentId")), ...(Array.isArray(kinds) && kinds.length ? { kinds } : {}) };
           break;
         }
+        case "decide": {
+          const levers = json("decideOpenLevers");
+          body = {
+            agent_id: p("decideAgentId"), case: json("decideCase"),
+            ...opt("mode", p("decideMode")), ...opt("model_ref", p("decideModelRef")),
+            ...(Array.isArray(levers) && levers.length ? { open_levers: levers } : {}),
+            ...(p("decideAbandoned", false) === true ? { abandoned: true } : {}),
+          };
+          break;
+        }
       }
 
       const res = await post(OPS[op].path, body);
+      if (op === "decide") {
+        // A receipt leaves by its ROUTE's port — never by `lane`, which is the record's answer,
+        // not the instruction. An unknown or missing route is `none`: the port a workflow must
+        // already handle.
+        const route = (res as { route?: string })?.route ?? "none";
+        const idx = ROUTES.indexOf(route as (typeof ROUTES)[number]);
+        routed[idx < 0 ? ROUTES.length - 1 : idx].push({ json: res as any, pairedItem: { item: i } });
+        decided = true;
+        continue;
+      }
       // An honest-empty leaves by its own door. `result: "none"` is a terminal ANSWER — retrying the
       // identical call returns the identical result — so it must not look like a transient failure.
       const bucket = (res as { result?: string })?.result === "none" ? empty : out;
       bucket.push({ json: res as any, pairedItem: { item: i } });
     }
-    return [out, empty];
+    return decided ? routed : [out, empty];
   }
 }
 
