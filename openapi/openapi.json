@@ -6137,7 +6137,7 @@
                       "minimum": 0
                     },
                     "minProperties": 1,
-                    "description": "the cost of a human doing the case instead per attribute value: { \"payments-api\": 2.0, ... }."
+                    "description": "the cost of a human doing the case instead per attribute value: { \"billing-api\": 2.0, ... }."
                   }
                 }
               },
@@ -6161,7 +6161,7 @@
                       "minimum": 0
                     },
                     "minProperties": 1,
-                    "description": "the cost of a failure that reaches the customer per attribute value: { \"payments-api\": 2.0, ... }."
+                    "description": "the cost of a failure that reaches the customer per attribute value: { \"billing-api\": 2.0, ... }."
                   }
                 }
               },
@@ -6269,7 +6269,7 @@
           "kinds": {
             "type": "array",
             "maxItems": 200,
-            "description": "Kinds of work to evaluate under the table: attribute values, e.g. [{ service: 'payments-api', size: 'L' }]. Each comes back with its solo threshold or the cell it is missing.",
+            "description": "Kinds of work to evaluate under the table: attribute values, e.g. [{ service: 'billing-api', size: 'L' }]. Each comes back with its solo threshold or the cell it is missing.",
             "items": {
               "type": "object",
               "additionalProperties": {
