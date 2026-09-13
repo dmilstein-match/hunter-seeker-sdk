@@ -1,8 +1,9 @@
 # Changelog
 
-## 2.3.0 — 2026-09-13 (unreleased)
+## Unreleased — 2026-09-13 (ships as python 2.3.x / n8n 2.3.0 when the owner publishes)
 
-Contract 2.1.0 (additive; every 2.0.0 call is unchanged).
+Contract 2.1.0 (additive; every 2.0.0 call is unchanged). Package versions stay at what the
+registries serve until the publish step bumps them (CI asserts the two agree).
 
 - New operation `hs_register_source` (`POST /v1/register-source`): register a source the workspace
   keeps — `file` (the dataset an upload produced becomes the source's data; its contract is profiled
