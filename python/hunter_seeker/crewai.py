@@ -193,6 +193,17 @@ def _specs(hs: Client) -> List[tuple]:
          "unattended-autonomy threshold under it (none before any save).",
          {"agent_id": (Optional[str], None), "kinds": (Optional[List[Dict[str, str]]], None)},
          lambda agent_id=None, kinds=None: hs.get_policy(agent_id=agent_id, kinds=kinds)),
+
+        ("hs_decide",
+         "One decision. lane (the record's answer), route (what to do: the lane when applied, else "
+         "none), band, max_autonomy, a signed receipt and a case_ref for a case, from the strictly-"
+         "earlier record of this kind of work and the cost table. Branch on route ONLY; a kind with "
+         "no record is none with reason no_record.",
+         {"agent_id": (str, ...), "case": (Dict[str, Any], ...), "mode": (Optional[str], None),
+          "model_ref": (Optional[str], None), "open_levers": (Optional[List[Dict[str, Any]]], None),
+          "abandoned": (Optional[bool], None)},
+         lambda agent_id, case, mode=None, model_ref=None, open_levers=None, abandoned=None:
+             hs.decide(agent_id, case, mode=mode, model_ref=model_ref, open_levers=open_levers, abandoned=abandoned)),
     ]
 
 

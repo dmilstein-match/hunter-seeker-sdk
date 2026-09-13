@@ -50,10 +50,11 @@ test("every operation posts to its own /v1 path", async () => {
     ["proposeBinding", "/v1/propose-binding"], ["confirmBinding", "/v1/confirm-binding"],
     ["getBinding", "/v1/get-binding"], ["ingestEvents", "/v1/ingest-events"],
     ["setPolicy", "/v1/set-policy"], ["getPolicy", "/v1/get-policy"],
+    ["decide", "/v1/decide"],
   ];
-  assert.equal(cases.length, 22, "the node must cover all twenty-two published tool operations");
+  assert.equal(cases.length, 23, "the node must cover all twenty-three published tool operations");
   for (const [operation, path] of cases) {
-    const req = await run({ operation, dataSource: "datasetId", outcomeIsDesirable: "unstated", reading: "{}", row: "{}", rows: "[]", batchRows: "[]", verdict: "{}", signature: "{}", entityIds: "", postValue: "" });
+    const req = await run({ operation, dataSource: "datasetId", outcomeIsDesirable: "unstated", reading: "{}", row: "{}", rows: "[]", batchRows: "[]", verdict: "{}", signature: "{}", entityIds: "", postValue: "", decideAgentId: "coder", decideCase: '{"kind":{},"actor":{"kind":"agent"},"opened_at":"2026-09-13T10:00:00Z"}', decideOpenLevers: "[]" });
     assert.equal(req.url, path, `${operation} posted to ${req.url}`);
     assert.equal(req.method, "POST");
   }
@@ -319,4 +320,25 @@ test("fetch_headers ride along with a fetch_url, and an empty object is omitted"
     entityColumn: "id", outcomeColumn: "churned", subjectKind: "org", topK: 20,
   });
   assert.equal("fetch_headers" in without.body.data, false, "an empty object is not a value");
+});
+
+test("decide sends agent_id, the case and only the optionals given; a receipt leaves by its route's port", async () => {
+  const req = await run({ operation: "decide", decideAgentId: "coder", decideCase: '{"case_id":"PR-1","kind":{"service":"docs-site","size":"small"},"actor":{"kind":"agent","name":"coder-v2"},"opened_at":"2026-09-13T10:00:00Z"}', decideMode: "", decideModelRef: "", decideOpenLevers: "[]", decideAbandoned: false });
+  assert.equal(req.url, "/v1/decide");
+  assert.deepEqual(req.body, { agent_id: "coder", case: { case_id: "PR-1", kind: { service: "docs-site", size: "small" }, actor: { kind: "agent", name: "coder-v2" }, opened_at: "2026-09-13T10:00:00Z" } });
+  const withOpts = await run({ operation: "decide", decideAgentId: "coder", decideCase: '{"kind":{},"actor":{},"opened_at":"2026-09-13T10:00:00Z"}', decideMode: "smoke", decideModelRef: "mr1_x", decideOpenLevers: '[{"lever_id":"lv_1"}]', decideAbandoned: true });
+  assert.deepEqual(withOpts.body.open_levers, [{ lever_id: "lv_1" }]);
+  assert.equal(withOpts.body.mode, "smoke");
+  assert.equal(withOpts.body.model_ref, "mr1_x");
+  assert.equal(withOpts.body.abandoned, true);
+
+  // four ports keyed on route: act, review, human, none — and never on lane
+  for (const [route, port] of [["act", 0], ["review", 1], ["human", 2], ["none", 3]]) {
+    const { self } = ctx({ operation: "decide", decideAgentId: "coder", decideCase: "{}", decideOpenLevers: "[]" });
+    self.helpers.httpRequestWithAuthentication.call = async () => ({ lane: "act", route, applied: route !== "none" });
+    const outputs = await new HunterSeeker().execute.call(self);
+    assert.equal(outputs.length, 4, "decide has four ports");
+    assert.equal(outputs[port].length, 1, `route ${route} leaves by port ${port}`);
+    assert.equal(outputs.flat().length, 1);
+  }
 });

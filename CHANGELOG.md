@@ -2,6 +2,23 @@
 
 ## 2.3.0 — unreleased
 
+### Contract 2.5.0 (additive; every 2.4.0 call is unchanged)
+
+- **`hs_decide`** (`POST /v1/decide`) — one decision for a case (Datagoat unit 13): `lane`
+  (act | review | human | none — the record's answer), `route` (what to do: the lane when the
+  decision applied, else `none`), `band`, `max_autonomy`, `likelihood_direction`, a signed
+  receipt and a `case_ref`, computed by the worker from the strictly-earlier record of the exact
+  kind of work (cases closed before this one opened; the same instant is excluded), the cost
+  table at both ends of a 95% Wilson interval, a stable control slice and the agent's mode.
+  Branch on `route` only: shadow routes `none` with `reason: shadow` while `lane` says what the
+  agent would have done; smoke returns a signed receipt and writes nothing; a kind with no
+  record is `none` with `reason: no_record`. An open lever puts `lever_id` / `lever_arm` on the
+  receipt. Costs one decision. Reached from the Python client (`decide`), both framework
+  adapters and the n8n node (`Decide`), whose outputs switch to four ports keyed on `route`
+  (`act`, `review`, `human`, `none`) for this operation.
+- `hs_decide` replaces `hs_score_entity` in `openapi-agent-actions.json` (D-13); the full
+  document still carries both.
+
 ### Contract 2.4.0 (additive; every 2.3.0 call is unchanged)
 
 - **`hs_set_policy`** (`POST /v1/set-policy`) and **`hs_get_policy`** (`POST /v1/get-policy`) —
