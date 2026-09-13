@@ -32,6 +32,19 @@ variant disagrees on about a quarter of ids), `trace@1` emitting two features pe
 rather than a flat six, and the ranking Verdict listing 100 entities inline rather than binding
 500.
 
+### Contract 2.2.0 (additive; every 2.1.0 call is unchanged)
+
+- Three operations for ENTITY BINDINGS: `hs_propose_binding` (`POST /v1/propose-binding`) —
+  every candidate entity, time axis, join key, reading kind and outcome over the workspace's
+  sources, gated by the engine; lone survivors settle, two or more come back as a question with
+  option keys, zero is an honest empty; `hs_confirm_binding` (`POST /v1/confirm-binding`) —
+  answers the questions and confirms: the manifest, the leak guard (`leakage_suspected` /
+  `excluded` / `advisory`), `as_of` and the content-hashed `binding_ref` (same picks, same
+  ref); `hs_get_binding` (`POST /v1/get-binding`) — a binding by id or ref with its versions.
+  Reached from the Python client (`propose_binding`, `confirm_binding`, `get_binding`), both
+  framework adapters and the n8n node (`Propose a binding`, `Confirm a binding`, `Get a binding`).
+  Outcome polarity is declared by the caller; the engine never infers it.
+
 ### Contract 2.1.0 (additive; every 2.0.0 call is unchanged)
 
 Package versions stay at what the registries serve until the publish step bumps them (CI asserts

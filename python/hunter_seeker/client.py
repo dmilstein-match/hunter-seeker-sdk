@@ -289,6 +289,28 @@ class Client:
         if contract: body["contract"] = dict(contract)
         return self._call("/v1/register-source", body)
 
+    # -- contract 2.2.0: entity bindings ------------------------------------- #
+    def propose_binding(self, source_ids: Sequence[str], *, polarity: Optional[str] = None) -> Dict[str, Any]:
+        """Propose an entity binding over the workspace's sources (the first is the base). Returns
+        the open questions (each with option keys), the settled points and the rejections."""
+        body: Dict[str, Any] = {"source_ids": list(source_ids)}
+        if polarity: body["polarity"] = polarity
+        return self._call("/v1/propose-binding", body)
+
+    def confirm_binding(self, binding_id: str, *, answers: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+        """Answer a proposed binding's questions (question id -> option key) and confirm it. Returns
+        the binding_ref, the manifest and the leak guard."""
+        body: Dict[str, Any] = {"binding_id": binding_id}
+        if answers: body["answers"] = dict(answers)
+        return self._call("/v1/confirm-binding", body)
+
+    def get_binding(self, *, binding_id: Optional[str] = None, binding_ref: Optional[str] = None) -> Dict[str, Any]:
+        """Read a binding by id or binding_ref: status, document, manifest, leak guard, versions."""
+        body: Dict[str, Any] = {}
+        if binding_id: body["binding_id"] = binding_id
+        if binding_ref: body["binding_ref"] = binding_ref
+        return self._call("/v1/get-binding", body)
+
     def export_bundle(self, verdict_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         body = {"verdict_id": verdict_id}
         if entity_id: body["entity_id"] = entity_id

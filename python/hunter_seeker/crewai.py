@@ -154,6 +154,25 @@ def _specs(hs: Client) -> List[tuple]:
          {"kind": (str, ...), "name": (str, ...), "dataset_id": (Optional[str], None),
           "contract": (Optional[Dict[str, Any]], None)},
          lambda kind, name, dataset_id=None, contract=None: hs.register_source(kind, name, dataset_id=dataset_id, contract=contract)),
+
+        ("hs_propose_binding",
+         "Free. Propose an entity binding over the workspace's sources (first = base): every "
+         "candidate is gated; lone survivors settle, two or more are a question with option keys, "
+         "zero is an honest empty. polarity (desirable | adverse) is yours to declare.",
+         {"source_ids": (List[str], ...), "polarity": (Optional[str], None)},
+         lambda source_ids, polarity=None: hs.propose_binding(source_ids, polarity=polarity)),
+
+        ("hs_confirm_binding",
+         "Free. Answer a binding's questions (question id -> option key) and confirm it: manifest, "
+         "leak guard and the content-hashed binding_ref come back.",
+         {"binding_id": (str, ...), "answers": (Optional[Dict[str, str]], None)},
+         lambda binding_id, answers=None: hs.confirm_binding(binding_id, answers=answers)),
+
+        ("hs_get_binding",
+         "Free. Read a binding by id or binding_ref: status, questions, document, manifest, leak "
+         "guard, versions.",
+         {"binding_id": (Optional[str], None), "binding_ref": (Optional[str], None)},
+         lambda binding_id=None, binding_ref=None: hs.get_binding(binding_id=binding_id, binding_ref=binding_ref)),
     ]
 
 

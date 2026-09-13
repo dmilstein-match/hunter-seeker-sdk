@@ -57,6 +57,10 @@ const OPS = {
   drift: { path: "/v1/drift-status", label: "Drift status (free)", cost: "free" },
   // — supply, contract 2.1.0 —
   registerSource: { path: "/v1/register-source", label: "Register a source (free)", cost: "free" },
+  // — supply, contract 2.2.0: entity bindings —
+  proposeBinding: { path: "/v1/propose-binding", label: "Propose a binding (free)", cost: "free" },
+  confirmBinding: { path: "/v1/confirm-binding", label: "Confirm a binding (free)", cost: "free" },
+  getBinding: { path: "/v1/get-binding", label: "Get a binding (free)", cost: "free" },
 } as const;
 
 type Op = keyof typeof OPS;
@@ -237,6 +241,25 @@ export class HunterSeeker implements INodeType {
       { displayName: "Source Name", name: "sourceName", type: "string", default: "", ...show("registerSource"), description: "Shown on the Sources screen." },
       { displayName: "Dataset ID", name: "sourceDatasetId", type: "string", default: "", ...show("registerSource"), description: "For kind File: the dataset_id from Provide dataset (after the PUT) or Upload a table. Consumed by this call." },
       { displayName: "Contract (JSON)", name: "sourceContract", type: "json", default: "{}", ...show("registerSource"), description: "Optional ODCS-shaped contract: columns[{name, logical_type}], primary_key_candidates[], time_columns[{name, semantics}]." },
+
+      // ── entity bindings (contract 2.2.0) ──────────────────────────────────────────────────
+      { displayName: "Source IDs", name: "bindingSourceIds", type: "string", default: "", ...show("proposeBinding"), description: "Comma-separated source ids; the first is the base." },
+      {
+        displayName: "Outcome Polarity",
+        name: "bindingPolarity",
+        type: "options",
+        options: [
+          { name: "Undeclared", value: "undeclared" },
+          { name: "Desirable (an outcome you want)", value: "desirable" },
+          { name: "Adverse (an outcome you avoid)", value: "adverse" },
+        ],
+        default: "undeclared",
+        ...show("proposeBinding"),
+        description: "Declared by you; the engine never infers it.",
+      },
+      { displayName: "Binding ID", name: "bindingId", type: "string", default: "", ...show("confirmBinding", "getBinding"), description: "From Propose a binding." },
+      { displayName: "Answers (JSON)", name: "bindingAnswers", type: "json", default: "{}", ...show("confirmBinding"), description: "question id → option key, for every open question." },
+      { displayName: "Binding Ref", name: "bindingRef", type: "string", default: "", ...show("getBinding"), description: "bd1_… — instead of the id." },
 
       // ── score ─────────────────────────────────────────────────────────────────────────────
       { displayName: "Entity ID", name: "entityId", type: "string", default: "", ...show("score", "report", "attest") },
@@ -512,6 +535,21 @@ export class HunterSeeker implements INodeType {
             ...opt("dataset_id", p("sourceDatasetId")),
             ...optObj("contract", json("sourceContract")),
           };
+          break;
+
+        case "proposeBinding": {
+          const polarity = p("bindingPolarity");
+          body = {
+            source_ids: String(p("bindingSourceIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+            ...(polarity && polarity !== "undeclared" ? { polarity } : {}),
+          };
+          break;
+        }
+        case "confirmBinding":
+          body = { binding_id: p("bindingId"), ...optObj("answers", json("bindingAnswers")) };
+          break;
+        case "getBinding":
+          body = { ...opt("binding_id", p("bindingId")), ...opt("binding_ref", p("bindingRef")) };
           break;
       }
 
