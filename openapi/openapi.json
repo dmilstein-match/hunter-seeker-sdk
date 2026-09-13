@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Verdict Layer API",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -53,7 +53,8 @@
     "policy": "12 months",
     "served_in_parallel": [
       "1.4.0",
-      "2.0.0"
+      "2.0.0",
+      "2.1.0"
     ],
     "sunset_of_1_4_0": "2027-09-01"
   },
@@ -2047,6 +2048,183 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/hs_register_source_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/propose-binding": {
+      "post": {
+        "operationId": "hs_propose_binding",
+        "summary": "Propose an entity binding over the workspace's sources.",
+        "description": "Free; no ranking run. Propose an ENTITY BINDING — which column is the entity, which is the time axis, how sources join, which reading reduces events to one row per entity, which column is the outcome — over one or more of the workspace's sources (the first is the base). The engine enumerates every candidate and gates each one by running the probe that decides whether it is runnable; lone survivors are settled, two or more survivors are returned as a question with the candidates and their measured facts (unique ratio, sample match rate, prevalence), zero survivors are an honest empty with the nearest miss. Nothing is picked by a name or a type. Answer the questions in hs_confirm_binding. A hsk_test_ key answers 403 test_key_sample_only.",
+        "tags": [
+          "supply"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Propose a binding",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_propose_binding_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_propose_binding_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/confirm-binding": {
+      "post": {
+        "operationId": "hs_confirm_binding",
+        "summary": "Answer a binding's questions and confirm it.",
+        "description": "Free; no ranking run. Answer the open questions of a proposed binding (question id → option key) and confirm it. The engine joins the sources on the chosen keys (the base grain is preserved or the join refuses), reduces once when a reading is chosen, and gates the outcome on the frame it would run; the answer carries the unified manifest, per-column leak-guard entries with status and reason, as_of, and the content-hashed binding_ref — the same picks give the same ref. Confirming writes a version; a workspace owner's action in the console, a live key's over the API. A hsk_test_ key answers 403 test_key_sample_only.",
+        "tags": [
+          "supply"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Confirm a binding",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_confirm_binding_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_confirm_binding_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/get-binding": {
+      "post": {
+        "operationId": "hs_get_binding",
+        "summary": "Read a binding by id or binding_ref.",
+        "description": "Free; no engine run. Read a binding of this workspace by binding_id or binding_ref: its status, the open questions if any, the confirmed document, the manifest and leak guard the engine returned on confirm, as_of, and every version with what moved in the manifest on a replay. A hsk_test_ key answers 403 test_key_sample_only.",
+        "tags": [
+          "supply"
+        ],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Get a binding",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_get_binding_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_get_binding_output"
                 }
               }
             }
@@ -5102,6 +5280,482 @@
           "source_id",
           "kind",
           "name",
+          "status",
+          "provenance"
+        ],
+        "additionalProperties": true
+      },
+      "hs_propose_binding_input": {
+        "type": "object",
+        "properties": {
+          "source_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 6,
+            "description": "Sources of this workspace (from hs_register_source or the Sources screen), ready with rows behind them. The FIRST is the base: its grain is the binding's grain; every later source is joined onto it."
+          },
+          "polarity": {
+            "type": "string",
+            "enum": [
+              "desirable",
+              "adverse",
+              "undeclared"
+            ],
+            "description": "Whether the outcome is one you WANT (converted, renewed) or one you want to avoid (churned, defaulted). Declared by you and recorded on the binding; the engine reports direction and never infers this."
+          }
+        },
+        "required": [
+          "source_ids"
+        ],
+        "additionalProperties": false
+      },
+      "hs_propose_binding_output": {
+        "type": "object",
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "description": "The binding's id in this workspace; pass it to hs_confirm_binding."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "settled",
+              "empty"
+            ],
+            "description": "`settled`: every decision point had a lone survivor — confirm now. `proposed`: one or more questions are open. `empty`: a required point had no candidate; see `empties`."
+          },
+          "questions": {
+            "type": "array",
+            "description": "Open questions, in order (roles · join · reading · outcome): asked only where two or more candidates survived the gate. Answer each with one of its option keys in hs_confirm_binding.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "id",
+                "point",
+                "question",
+                "options"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "string"
+                },
+                "point": {
+                  "type": "string",
+                  "enum": [
+                    "entity",
+                    "time_axis",
+                    "join",
+                    "reading",
+                    "outcome"
+                  ]
+                },
+                "question": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                },
+                "options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "required": [
+                      "key",
+                      "label"
+                    ],
+                    "properties": {
+                      "key": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "note": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "settled": {
+            "type": "array",
+            "description": "Lone survivors, taken automatically, each with the verdict it passed.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "point",
+                "value"
+              ],
+              "properties": {
+                "point": {
+                  "type": "string"
+                },
+                "source_id": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "empties": {
+            "type": "array",
+            "description": "Required points with no surviving candidate: the reason and the nearest miss. An honest empty, never an error.",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "point": {
+                  "type": "string"
+                },
+                "source_id": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "near_miss": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "rejections": {
+            "type": "array",
+            "description": "Columns that cannot be the outcome, with status and reason: `excluded` (an identifier or time column — structural), `leakage suspected`, or `rejected` (the gate's reason).",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "column",
+                "status",
+                "reason"
+              ],
+              "properties": {
+                "source_id": {
+                  "type": "string"
+                },
+                "column": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "excluded",
+                    "leakage suspected",
+                    "rejected"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "binding_id",
+          "status",
+          "questions",
+          "settled",
+          "rejections",
+          "provenance"
+        ],
+        "additionalProperties": true
+      },
+      "hs_confirm_binding_input": {
+        "type": "object",
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "description": "From hs_propose_binding."
+          },
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "question id → option key, for every open question hs_propose_binding returned. A key the engine did not offer is refused (422 unknown_option)."
+          }
+        },
+        "required": [
+          "binding_id"
+        ],
+        "additionalProperties": false
+      },
+      "hs_confirm_binding_output": {
+        "type": "object",
+        "properties": {
+          "binding_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "not_runnable",
+              "empty"
+            ],
+            "description": "`confirmed`: the binding has a binding_ref and a bound dataset. `not_runnable`: the picks joined, but the outcome did not pass the gate on the frame the engine would run (the reason says why). `empty`: the reading reduced the frame to nothing."
+          },
+          "binding_ref": {
+            "type": "string",
+            "description": "`bd1_` + the hash of the canonical binding document — the same picks give the same ref, byte for byte."
+          },
+          "manifest": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "column → role (identifier · temporal · outcome · predictor · attribute) on the frame the engine will run; the entity, join keys and time axis are structural."
+          },
+          "leak_guard": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "column",
+                "status",
+                "reason"
+              ],
+              "properties": {
+                "column": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "leakage_suspected",
+                    "excluded",
+                    "advisory"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Per-column entries in the engine's vocabulary: `leakage_suspected` (a column that alone separates the outcome almost perfectly — usually known only after it), `excluded` (structural), `advisory` (not removed; a person should check). An advisory opens an analyst pass in the console."
+          },
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "column": {
+                "type": "string"
+              },
+              "positive_values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "prevalence": {
+                "type": "number"
+              },
+              "verdict": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "reason": {
+            "type": "string",
+            "description": "For `empty`: why nothing survived the reduction."
+          },
+          "next": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "binding_id",
+          "status",
+          "provenance"
+        ],
+        "additionalProperties": true
+      },
+      "hs_get_binding_input": {
+        "type": "object",
+        "properties": {
+          "binding_id": {
+            "type": "string"
+          },
+          "binding_ref": {
+            "type": "string",
+            "pattern": "^bd1_[0-9a-f]{32}$"
+          }
+        },
+        "additionalProperties": false,
+        "description": "One of binding_id or binding_ref."
+      },
+      "hs_get_binding_output": {
+        "type": "object",
+        "properties": {
+          "binding_id": {
+            "type": "string"
+          },
+          "binding_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "document": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true,
+            "description": "The confirmed entity binding (dg.binding.v1): sources, identity, join_plan, time_axis, reading, outcome, polarity, as_of_policy. Null until confirmed."
+          },
+          "manifest": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "leak_guard": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "as_of": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "binding_ref": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "replaces": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "diff": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "engine_version": {
+                "type": "string"
+              },
+              "core_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "engine_version",
+              "core_hash"
+            ],
+            "additionalProperties": false,
+            "description": "The engine build that produced these facts. Present on every response."
+          }
+        },
+        "required": [
+          "binding_id",
           "status",
           "provenance"
         ],

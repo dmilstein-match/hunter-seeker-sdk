@@ -47,8 +47,10 @@ test("every operation posts to its own /v1 path", async () => {
     ["verify", "/v1/verify-verdict"], ["attest", "/v1/attest-action"],
     ["report", "/v1/report-outcome"], ["evidence", "/v1/action-evidence"],
     ["drift", "/v1/drift-status"], ["registerSource", "/v1/register-source"],
+    ["proposeBinding", "/v1/propose-binding"], ["confirmBinding", "/v1/confirm-binding"],
+    ["getBinding", "/v1/get-binding"],
   ];
-  assert.equal(cases.length, 16, "the node must cover all sixteen published tool operations");
+  assert.equal(cases.length, 19, "the node must cover all nineteen published tool operations");
   for (const [operation, path] of cases) {
     const req = await run({ operation, dataSource: "datasetId", outcomeIsDesirable: "unstated", reading: "{}", row: "{}", rows: "[]", batchRows: "[]", verdict: "{}", signature: "{}", entityIds: "", postValue: "" });
     assert.equal(req.url, path, `${operation} posted to ${req.url}`);

@@ -148,9 +148,24 @@ def verdict_tools(hs: Client) -> List[Any]:
         """Free. Register a SOURCE the workspace keeps and returns to (kind file | warehouse | event_stream). For a file, pass the dataset_id an upload produced (hs_provide_dataset + PUT, or hs_append_rows); its contract is profiled as the ingest completes. A hsk_test_ key cannot register sources."""
         return hs.register_source(kind, name, dataset_id=dataset_id, contract=contract)
 
+    @tool
+    def hs_propose_binding(source_ids: List[str], polarity: Optional[str] = None) -> Dict[str, Any]:
+        """Free. Propose an ENTITY BINDING over the workspace's sources (the first is the base): the engine gates every candidate entity, time axis, join key, reading and outcome; lone survivors settle, two or more come back as a question with option keys, zero is an honest empty. polarity (desirable | adverse) is yours to declare; the engine never infers it. Answer the questions in hs_confirm_binding."""
+        return hs.propose_binding(source_ids, polarity=polarity)
+
+    @tool
+    def hs_confirm_binding(binding_id: str, answers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Free. Answer a proposed binding's questions (question id -> option key) and confirm it: the engine joins on the chosen keys, reduces once, gates the outcome, and returns the manifest, the leak guard and the content-hashed binding_ref (same picks, same ref)."""
+        return hs.confirm_binding(binding_id, answers=answers)
+
+    @tool
+    def hs_get_binding(binding_id: Optional[str] = None, binding_ref: Optional[str] = None) -> Dict[str, Any]:
+        """Free. Read a binding by id or binding_ref: status, open questions, the confirmed document, manifest, leak guard and versions."""
+        return hs.get_binding(binding_id=binding_id, binding_ref=binding_ref)
+
     # Every operation the REST surface exposes, which is what the parity gate checks.
     return [hs_describe_capabilities, hs_provide_dataset, hs_append_rows, hs_rank_topk,
             hs_poll_task, hs_model_quality, hs_explain_drivers, hs_explain_levers,
             hs_context_brief, hs_score_entity, hs_score_batch, hs_verify_verdict,
             hs_attest_action, hs_report_outcome, hs_action_evidence, hs_drift_status,
-            hs_register_source]
+            hs_register_source, hs_propose_binding, hs_confirm_binding, hs_get_binding]
