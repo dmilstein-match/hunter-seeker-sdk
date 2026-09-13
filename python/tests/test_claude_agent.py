@@ -9,6 +9,7 @@ import typing
 import pytest
 from conftest import MODEL_REF, FakeScoringClient
 
+from hunter_seeker import HunterSeekerError, ProblemDetails
 from hunter_seeker.claude_agent import LoopSession
 from hunter_seeker.loop import Ledger
 
@@ -27,12 +28,13 @@ def test_telemetry_comes_from_the_hooks_not_the_transcript():
         ("pre_tool", {"tool_name": "Bash", "tool_input": {"command": "pytest"}}),
         ("pre_tool", {"tool_name": "Edit", "tool_input": {"file": "x.py"}}),
         ("post_tool_failure", {"tool_name": "Edit", "error": "boom"}),
-        ("pre_tool", {"tool_name": "Bash", "tool_input": {"command": "pytest"}}),   # the same action again
+        ("pre_tool", {"tool_name": "Edit", "tool_input": {"file": "y.py"}}),   # same tool, new input: not a repeat
+        ("pre_tool", {"tool_name": "Edit", "tool_input": {"file": "x.py"}}),   # the same action again
         ("stop", {"stop_reason": "end_turn"}),
     ])
     row = ledger.rows[0]
-    assert row["tool"] == "Bash"                 # the first tool the run called
-    assert row["steps"] == 3 and row["errors"] == 1 and row["repeated_actions"] == 1
+    assert row["tool"] == "Bash"                 # the first tool the run called, not the last
+    assert row["steps"] == 4 and row["errors"] == 1 and row["repeated_actions"] == 1
     assert row["failed"] is None                 # the outcome is observed later, by you
     assert row["elapsed_ms"] is not None and row["tokens_in"] is None
 
@@ -57,6 +59,60 @@ def test_stop_gates_with_priors_and_hands_the_decision_to_your_policy():
     assert sent["tool_prior_n"] == 1
     assert seen and seen[0].action == "intercept" and s.decision is seen[0]
     assert ledger.rows[-1]["run_id"] == "r1"
+
+
+class _GateFails(FakeScoringClient):
+    def score_entity(self, model_ref, row, **kw):
+        super().score_entity(model_ref, row, **kw)
+        raise HunterSeekerError(ProblemDetails(422, "row_not_scoreable", "scorecard feature not found",
+                                               "send the priors", None, None))
+
+
+def test_a_failed_gate_still_records_the_run_and_says_so():
+    """The SDK swallows a hook's exception, so a gate that raised before the append lost the run's
+    telemetry with nothing telling the harness."""
+    ledger = Ledger()
+    hs = _GateFails()
+    seen = []
+    s = LoopSession(hs, ledger, run_id="r1", agent="a", task="t", model_ref=MODEL_REF,
+                    on_decision=seen.append, control_fraction=0.0)
+    with pytest.raises(HunterSeekerError):
+        _drive(s, [("pre_tool", {"tool_name": "Bash", "tool_input": {}}), ("stop", {})])
+    assert [r["run_id"] for r in ledger.rows] == ["r1"] and ledger.rows[0]["failed"] is None
+    assert s.recorded and s.decision is None and seen == []
+    assert isinstance(s.gate_error, HunterSeekerError)
+    _drive(s, [("stop", {})])                       # a later Stop neither re-records nor re-bills
+    assert len(ledger.rows) == 1 and len(hs.calls) == 1
+    ledger.observe("r1", 1)                         # and the outcome can still be filled in
+
+
+def test_a_run_id_already_in_the_ledger_is_refused_before_the_run_starts():
+    ledger = Ledger()
+    ledger.append({"run_id": "r1", "ts": "2026-01-01T00:00:00Z", "agent": "a", "failed": 1})
+    with pytest.raises(ValueError, match="already in the ledger"):
+        LoopSession(FakeScoringClient(), ledger, run_id="r1", agent="a", task="t")
+
+
+@pytest.mark.parametrize("kw", [{"ts": "2026-03-04 10:00:00 +02:00"}, {"extra": {"ts": "03/04/2026"}}],
+                         ids=["ts", "ts-in-extra"])
+def test_a_ts_the_ledger_cannot_parse_is_refused_before_the_run_starts(kw):
+    with pytest.raises(ValueError, match="ISO-8601"):
+        LoopSession(FakeScoringClient(), Ledger(), run_id="r1", agent="a", task="t", **kw)
+
+
+def test_an_append_refused_at_stop_is_on_the_session():
+    """Two sessions built for one run_id before either stops: the second Stop's append is refused.
+    The SDK swallows the raise, and gate_error stayed None, so the documented check said nothing
+    about a run that was neither recorded nor gated."""
+    ledger = Ledger()
+    hs = FakeScoringClient()
+    s1 = LoopSession(hs, ledger, run_id="r1", agent="a", task="t", model_ref=MODEL_REF, control_fraction=0.0)
+    s2 = LoopSession(hs, ledger, run_id="r1", agent="a", task="t", model_ref=MODEL_REF, control_fraction=0.0)
+    _drive(s1, [("stop", {})])
+    with pytest.raises(ValueError, match="already in the ledger"):
+        _drive(s2, [("stop", {})])
+    assert s2.decision is None and isinstance(s2.gate_error, ValueError) and not s2.recorded
+    assert len(hs.calls) == 1 and len(ledger.rows) == 1          # the refused run was not billed
 
 
 def test_no_model_ref_means_record_only():
@@ -99,3 +155,9 @@ def test_hooks_are_real_claude_agent_sdk_events():
     hooks = s.hooks()
     assert set(hooks) <= events, set(hooks) - events
     assert all(isinstance(m, sdk.HookMatcher) for matchers in hooks.values() for m in matchers)
+    # and each event calls the coroutine it is named for: a dropped Stop records nothing, and a
+    # PreToolUse bound to stop() would record and gate the run at its first tool call
+    assert set(hooks) == {"PreToolUse", "PostToolUseFailure", "Stop"}
+    assert hooks["PreToolUse"][0].hooks == [s.pre_tool]
+    assert hooks["PostToolUseFailure"][0].hooks == [s.post_tool_failure]
+    assert hooks["Stop"][0].hooks == [s.stop]

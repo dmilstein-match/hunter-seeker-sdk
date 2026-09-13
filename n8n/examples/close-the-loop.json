@@ -6,7 +6,9 @@
       "https://hunter-seeker.io/docs/control-arm — why a random holdout is what makes the evidence mean anything",
       "https://hunter-seeker.io/docs/two-loops — this workflow is Loop B"
     ],
-    "expect": "Action evidence returns live: null until each cell has 30 reported outcomes, and flags small_n below 100. That is the floor working, not a failure — report it as 'not enough evidence yet', never as 'no effect'."
+    "expect": "Action evidence returns live: null until each cell has 30 reported outcomes, and flags small_n below 100. That is the floor working, not a failure — report it as 'not enough evidence yet', never as 'no effect'.",
+    "requires": "Attest and Report outcome write to an append-only ledger: they need an hsk_live_ key issued with 'Can report outcomes' (write:outcomes). An hsk_test_ key, including one minted by /v1/agents/register, or a live key without that scope, gets 403 scope_required at both steps. Rank, Explain levers, Action evidence and Drift status work with any key.",
+    "levers_on_this_sample": "sample:saas_churn clears but returns levers: [] (its joint pattern covers about 1% of entities), so on this sample there is no lever_token and the Attest branch never runs. Point Rank at your own data, or at sample:agent_traces (the sample the product documents as returning levers), to exercise it."
   },
   "nodes": [
     { "name": "Weekly refresh", "type": "n8n-nodes-base.scheduleTrigger", "parameters": { "rule": { "interval": [{ "field": "weeks" }] } } },
@@ -23,7 +25,7 @@
       "notes": "run.honest_empty — negative knowledge. Relay {{$json.reasons}} to whoever asked; improving the input is the only productive next step." },
 
     { "name": "Explain levers (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
-      "notes": "This is where lever_token comes from. Without it there is nothing to attest, which is why the five-operation node could not close this loop.",
+      "notes": "This is where lever_token comes from. Without it there is nothing to attest, which is why the five-operation node could not close this loop. On sample:saas_churn this returns levers: [] — no lever, no token, and the Attest branch cannot run for that ranking. A lever the engine did not mint a token for carries NO lever_token field (absent, not null); 'Lever token minted?' below routes only the ones that do.",
       "parameters": { "operation": "levers", "rankingRef": "={{$json.ranking_ref}}", "entityIds": "={{$json.entities.map(e => e.entity_id).join(',')}}" } },
 
     { "name": "Hold out a control arm", "type": "n8n-nodes-base.code",
@@ -35,12 +37,16 @@
     { "name": "Do the play", "type": "n8n-nodes-base.noOp",
       "notes": "Your own action — the call, the discount, the outreach. The engine returns levers and principal reasons; the play is yours." },
 
+    { "name": "Lever token minted?", "type": "n8n-nodes-base.if",
+      "notes": "Attest needs a lever_token, and the field is absent (not null) when the engine minted none. Items without one skip Attest and still go to Report outcome.",
+      "parameters": { "conditions": { "boolean": [{ "value1": "={{typeof $json.lever_token === 'string' && $json.lever_token.length > 0}}", "value2": true }] } } },
+
     { "name": "Attest (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
-      "notes": "TREATED ARM ONLY. Only a hash of the lever_token is stored, never the token. post_value is the feature's value AFTER you acted.",
+      "notes": "TREATED ARM ONLY, and only for a lever that carries a lever_token. Needs a write:outcomes live key (meta.requires). Only a hash of the lever_token is stored, never the token. post_value is the feature's value AFTER you acted.",
       "parameters": { "operation": "attest", "modelRef": "={{$json.model_ref}}", "entityId": "={{$json.entity_id}}", "leverToken": "={{$json.lever_token}}", "postValue": "={{$json.post_value}}" } },
 
     { "name": "Report outcome (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",
-      "notes": "BOTH ARMS. Skipping the control arm here is fatal: with no observed outcomes for it there is nothing to compare against. Append-only, and idempotent on event_id, so a retried workflow is safe.",
+      "notes": "BOTH ARMS. Skipping the control arm here is fatal: with no observed outcomes for it there is nothing to compare against. Append-only, and idempotent on event_id, so a retried workflow is safe. Needs a write:outcomes live key (meta.requires).",
       "parameters": { "operation": "report", "modelRef": "={{$json.model_ref}}", "entityId": "={{$json.entity_id}}", "outcome": "={{$json.observed}}" } },
 
     { "name": "Action evidence (free)", "type": "n8n-nodes-hunter-seeker.hunterSeeker",

@@ -25,7 +25,9 @@ The governed loop over AGENT RUNS (ledger → priors → gate → control arm �
     d = gate(hs, model_ref, ledger, new_run)        # attaches the trace@1 priors, draws the
     d.action                                        # control arm, reads the band WITH its polarity
                                                     # → "intercept" | "proceed" | "default"
-    era_lock(hs.explain_drivers(ranking_ref)["pattern"]["conditions"], ledger.rows)["era_locked"]
+    r = era_lock(hs.explain_drivers(ranking_ref)["pattern"]["conditions"],
+                 [ledger.with_priors(x) for x in ledger.rows])   # the priors are not in ledger.rows
+    r["era_locked"] or r["clock_like"]              # either one keeps the pattern off the live path
 
 Harness adapters for that loop: hunter_seeker.claude_agent (hooks), hunter_seeker.langchain_middleware.
 Framework adapters that give an AGENT the engine as tools: hunter_seeker.langchain, hunter_seeker.crewai.
@@ -42,6 +44,7 @@ __all__ = ["Client", "HunterSeekerError", "ProblemDetails",
            "should_act", "ceiling", "band", "lever_helps", "polarity_of", "attestable",
            "usability_of", "run_is_actionable", "ACTIONABLE", "UNJUDGED", "REFUSED",
            "Ledger", "gate", "decide", "Decision", "control_arm", "era_lock"]
-# Kept in step with pyproject.toml by the versions-agree CI job. This read 2.0.0 through four
+# Written once, in _version.py, which the User-Agent also reads. Kept in step with pyproject.toml
+# by tests/test_public_api.py and the registry-installs-clean CI job. This read 2.0.0 through four
 # releases while pyproject.toml and the User-Agent string both said 2.1.1.
-__version__ = "2.2.1"
+from ._version import __version__

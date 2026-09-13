@@ -88,7 +88,8 @@ elif d.action == "proceed":   ...                        #   draws the control a
 else:                         ...                        #   reads the band WITH its polarity
 
 pattern = hs.explain_drivers(ranking_ref)["pattern"]["conditions"]
-assert not era_lock(pattern, ledger.rows)["era_locked"]  # the _prior_n emits are counters that only grow
+r = era_lock(pattern, [ledger.with_priors(x) for x in ledger.rows])  # ledger.rows alone lacks the priors
+assert not (r["era_locked"] or r["clock_like"])         # the _prior_n emits are counters that only grow
 ```
 
 Harness adapters: `hunter_seeker.claude_agent.LoopSession` (hooks: builds the row from what the

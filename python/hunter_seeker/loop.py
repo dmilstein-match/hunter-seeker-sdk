@@ -30,10 +30,14 @@ WHY THIS MODULE EXISTS — three things the engine cannot do for you, each measu
     NULL for both. `Ledger.priors` is that definition, pinned to a fixture the engine generated.
 
 2.  **Acting on the score destroys the data the score needs.** Once a band causes a reroute you
-    stop observing what would have happened, and `hs_action_evidence` — which compares acted
-    against not-acted WITHIN the same pattern — has nothing to compare. `control_arm` exempts a
-    fixed slice of runs by a stable hash of the run id, so the slice is the same forever and the
-    same on every machine.
+    stop observing what would have happened. `control_arm` exempts a fixed slice of runs by a
+    stable hash of the run id, so the slice is the same forever and the same on every machine,
+    and YOUR comparison of treated runs against untreated ones (`Decision.control`, from your own
+    ledger) has a clean baseline. The engine does not read it: `hs_action_evidence` splits every
+    entity with a reported outcome under the model_ref into ACTED (a compliant
+    `hs_attest_action` row) and NOT ACTED (everything else), with no pattern filter and no
+    control input. `gate()` intercepts and proceeds write no attestation, so they never reach
+    the acted cell.
 
 3.  **A pattern can bound a monotone counter and never fire again.** The `_prior_n` emits are
     counts that only grow, so `agent_prior_n > 97` is a date filter wearing a feature's name — the
@@ -47,7 +51,9 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import json
 import math
+import numbers
 import re
 from bisect import bisect_left
 from dataclasses import dataclass, field
@@ -73,7 +79,25 @@ def prior_feature_names(groups: Iterable[str] = GROUP_ROLES) -> List[str]:
 
 
 def _missing(v: Any) -> bool:
-    return v is None or (isinstance(v, float) and math.isnan(v))
+    """None, a NaN of any float type, or pandas' NA/NaT — what `df.to_dict('records')` writes for a
+    missing cell. The engine reads each as NULL, so this must too (checked by type name so pandas
+    stays optional)."""
+    if v is None or type(v).__name__ in ("NAType", "NaTType"):
+        return True
+    return isinstance(v, numbers.Real) and not isinstance(v, numbers.Integral) and math.isnan(v)
+
+
+# pandas' default `na_values` for a string cell (`pandas._libs.parsers.STR_NA_VALUES`, pandas 2.1.4,
+# the engine's pin). Every fit table reaches the engine as CSV and is read with `pd.read_csv`
+# defaults, so a group cell holding exactly one of these is NULL there. Matched exactly, as pandas
+# matches the cell text: no strip, no case folding (' NA' and 'na' are real groups to the engine).
+_CSV_NA = frozenset({"", "#N/A", "#N/A N/A", "#NA", "-1.#IND", "-1.#QNAN", "-NaN", "-nan", "1.#IND",
+                     "1.#QNAN", "<NA>", "N/A", "NA", "NULL", "NaN", "None", "n/a", "nan", "null"})
+
+
+def _missing_group(v: Any) -> bool:
+    """A group value the engine reads as NULL: `_missing`, or a string its CSV read turns into NaN."""
+    return _missing(v) or (isinstance(v, str) and v in _CSV_NA)
 
 
 # ── timestamps ──────────────────────────────────────────────────────────────────────────────
@@ -85,11 +109,15 @@ def _missing(v: Any) -> bool:
 # One difference in kind: the engine decides "epoch" per COLUMN (every value in the band), this
 # decides per value — so `Ledger.append` refuses what it cannot parse, and a ledger you write
 # yourself should write ISO-8601.
+#
+# An offset (Z, +02:00, -0500) is accepted ONLY directly after HH:MM:SS[.frac]. The engine reads
+# an offset after whitespace, after a date alone, or after HH:MM as NULL ('2026-03-04 10:00:00
+# +02:00', '2026-03-04Z', '2026-03-04T10:00Z'), so the ledger refuses those rather than give
+# other runs priors the fit never saw.
 
 _ISO = re.compile(
     r"^(\d{4})-(\d{2})-(\d{2})"
-    r"(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?)?"
-    r"\s*(Z|[+-]\d{2}:?\d{2})?$"
+    r"(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:?\d{2})?)?)?$"
 )
 _EPOCH_S = (10**8, 10**10)      # the engine's declared bands, not tuned thresholds
 _EPOCH_MS = (10**11, 10**13)
@@ -97,7 +125,7 @@ _EPOCH_MS = (10**11, 10**13)
 
 def parse_ts(value: Any) -> Optional[datetime]:
     """A naive-UTC datetime at microsecond resolution, or None when this cannot parse it."""
-    if value is None:
+    if _missing(value):          # before the datetime branch: pandas' NaT IS a datetime subclass
         return None
     if isinstance(value, datetime):
         dt = value
@@ -137,7 +165,7 @@ def parse_ts(value: Any) -> Optional[datetime]:
 # ── the ledger ──────────────────────────────────────────────────────────────────────────────
 
 def _binary_or_none(value: Any, where: str) -> Optional[int]:
-    if value is None:
+    if _missing(value):          # None, NaN, pandas NA: not observed yet, as the engine reads them
         return None
     if isinstance(value, bool):
         return int(value)
@@ -157,6 +185,9 @@ class Ledger:
     column may be None while the run is in flight; only rows with a KNOWN outcome contribute to
     another run's priors, because that is what the fit saw — the engine fits on a fully labelled
     table, and the decision-time equivalent is "the earlier runs whose outcome I know".
+    `append` refuses a run_id the ledger already holds: the outcome of a recorded run is filled
+    in with `observe`, never with a second row. `extend` is all or nothing: a refused batch leaves
+    the ledger unchanged, so fix the row and pass the whole batch again.
     """
 
     def __init__(self, *, identifier: str = "run_id", time_axis: str = "ts",
@@ -178,11 +209,18 @@ class Ledger:
         # re-parse of the whole ledger (3,000 rows took 38 s that way).
         self._times: List[datetime] = []
         self._by_group: Dict[Tuple[str, str], List[int]] = {}
-        self._by_id: Dict[str, List[int]] = {}
-        self._tables: Dict[Tuple[str, str], Tuple[List[datetime], List[int]]] = {}
+        self._by_id: Dict[str, int] = {}
+        # Each cached table is tagged with the write generation it was built from and served only
+        # while that generation is current. LoopSession computes priors in a worker thread while
+        # the event loop keeps writing, and a write landing mid-build must not leave a stale table
+        # cached until the next write.
+        self._gen = 0
+        self._tables: Dict[Tuple[str, str], Tuple[int, Tuple[List[datetime], List[int]]]] = {}
 
     # -- writing -------------------------------------------------------------------------------
-    def append(self, row: Mapping[str, Any]) -> None:
+    def _prepare(self, row: Mapping[str, Any], pending: Iterable[str] = ()) -> Tuple[Dict[str, Any], datetime, str]:
+        """Every refusal `append` makes, with nothing written: (the row to store, its time, its key).
+        `pending` holds the keys of rows earlier in the same batch."""
         for col in (self.identifier, self.time_axis):
             if col not in row:
                 raise ValueError(f"row is missing the {col!r} column")
@@ -192,27 +230,55 @@ class Ledger:
                 f"run {row[self.identifier]!r}: {self.time_axis}={row[self.time_axis]!r} is not ISO-8601 "
                 "or epoch seconds/millis. The ledger refuses it rather than give this run priors that "
                 "may disagree with the engine's, which parses more formats. Write ISO-8601.")
+        run_key = str(row[self.identifier])
+        if run_key in self._by_id:
+            raise ValueError(
+                f"run {row[self.identifier]!r} is already in the ledger. One row per run: fill in its "
+                "outcome with observe(), or give a new run a new run_id. A second row would stay "
+                "unlabelled beside the first and reach the fit as a duplicate entity.")
+        if run_key in pending:
+            raise ValueError(f"run {row[self.identifier]!r} appears twice in this batch. One row per run.")
         r = dict(row)
         r[self.outcome] = _binary_or_none(r.get(self.outcome), f"run {r[self.identifier]!r}")
+        return r, t, run_key
+
+    def _commit(self, r: Dict[str, Any], t: datetime, run_key: str) -> None:
         i = len(self.rows)
         self.rows.append(r)
         self._times.append(t)
-        self._by_id.setdefault(str(r[self.identifier]), []).append(i)
+        self._by_id[run_key] = i
         for col in self.groups.values():
-            if r.get(col) is not None:
+            if not _missing_group(r.get(col)):                 # NULL to the engine, not a group
                 self._by_group.setdefault((col, str(r[col])), []).append(i)
+
+    def append(self, row: Mapping[str, Any]) -> None:
+        self._commit(*self._prepare(row))
+        self._gen += 1
         self._tables.clear()
 
     def extend(self, rows: Iterable[Mapping[str, Any]]) -> None:
-        for r in rows:
-            self.append(r)
+        """All or nothing: every row is checked before any is written, so a refused batch leaves the
+        ledger unchanged. Appending row by row kept the rows before the bad one, and re-running the
+        corrected batch then failed on the first of them as a duplicate."""
+        prepared: List[Tuple[Dict[str, Any], datetime, str]] = []
+        seen: set = set()
+        for row in rows:
+            p = self._prepare(row, seen)
+            seen.add(p[2])
+            prepared.append(p)
+        for p in prepared:
+            self._commit(*p)
+        if prepared:
+            self._gen += 1
+            self._tables.clear()
 
     def observe(self, run_id: str, outcome: Any) -> None:
         """Fill in the observed outcome for a run already in the ledger."""
-        idx = self._by_id.get(str(run_id))
-        if not idx:
+        i = self._by_id.get(str(run_id))
+        if i is None:
             raise KeyError(f"run {run_id!r} is not in the ledger")
-        self.rows[idx[0]][self.outcome] = _binary_or_none(outcome, f"run {run_id!r}")
+        self.rows[i][self.outcome] = _binary_or_none(outcome, f"run {run_id!r}")
+        self._gen += 1
         self._tables.clear()
 
     # -- priors --------------------------------------------------------------------------------
@@ -220,26 +286,27 @@ class Ledger:
         """The `trace@1` features for `row` — two per bound role — over this ledger's labelled rows.
 
         `row` need not be in the ledger. Its own timestamp and group values decide the windows;
-        rows of the ledger that share its identifier are excluded so scoring a run already
-        recorded does not let it see its own label.
+        the ledger's row with the same identifier is excluded so scoring a run already recorded
+        does not let it see its own label.
         """
         t = parse_ts(row.get(self.time_axis))
-        own_id = str(row.get(self.identifier))
+        own = self._by_id.get(str(row.get(self.identifier)))
         out: Dict[str, Optional[float]] = {}
         for role, col in self.groups.items():
             n_name, rate_name = prior_feature_names([role])
             value = row.get(col)
-            if t is None or value is None:
+            if t is None or _missing_group(value):
                 out[n_name] = out[rate_name] = None
                 continue
             key = str(value)
             times, sums = self._table((col, key))
             n = bisect_left(times, t)                          # strictly earlier; a tie is not earlier
             total = sums[n]
-            for i in self._by_id.get(own_id, ()):              # a run never sees its own label
-                r = self.rows[i]
-                if (r.get(col) is not None and str(r[col]) == key and r[self.outcome] is not None
-                        and self._times[i] < t):
+            if own is not None:                                # a run never sees its own label
+                r = self.rows[own]
+                # the same missing-value rule that decided what went into the table
+                if (not _missing_group(r.get(col)) and str(r[col]) == key and r[self.outcome] is not None
+                        and self._times[own] < t):
                     n -= 1
                     total -= r[self.outcome]
             out[n_name] = float(n)
@@ -248,17 +315,133 @@ class Ledger:
 
     def _table(self, key: Tuple[str, str]) -> Tuple[List[datetime], List[int]]:
         """(sorted times, running outcome sums) over one group's LABELLED rows; cached until a write."""
-        table = self._tables.get(key)
-        if table is None:
-            idx = sorted((i for i in self._by_group.get(key, ()) if self.rows[i][self.outcome] is not None),
-                         key=self._times.__getitem__)
-            table = ([self._times[i] for i in idx],
-                     list(accumulate((self.rows[i][self.outcome] for i in idx), initial=0)))
-            self._tables[key] = table
+        gen = self._gen
+        hit = self._tables.get(key)
+        if hit is not None and hit[0] == gen:
+            return hit[1]
+        idx = sorted((i for i in self._by_group.get(key, ()) if self.rows[i][self.outcome] is not None),
+                     key=self._times.__getitem__)
+        table = ([self._times[i] for i in idx],
+                 list(accumulate((self.rows[i][self.outcome] for i in idx), initial=0)))
+        # Tagged, not checked-then-stored: a write between a check and the store would still cache
+        # a stale table. One stored late carries an old tag and is rebuilt on the next read.
+        self._tables[key] = (gen, table)
         return table
 
     def with_priors(self, row: Mapping[str, Any]) -> Dict[str, Any]:
         return {**row, **self.priors(row)}
+
+    # -- what the loop decided, and what it adds up to ----------------------------------------
+
+    #: The six columns a Decision leaves on a row. Stripped again by `fit_rows`.
+    DECISION_COLUMNS = ("hs_model_ref", "hs_band", "hs_autonomy", "hs_action", "hs_control",
+                        "hs_verdict_id")
+
+    def record_decision(self, run_id: Any, decision: "Decision") -> None:
+        """Write a Decision's facts onto a run already in the ledger."""
+        # `_by_id` maps the run key to its INDEX, not to the row — same as `observe` above.
+        # Treating it as the row made this method raise `'int' object has no attribute 'update'`
+        # on every call it did not refuse, and the only test covered the not-found branch, so a
+        # method that could never succeed sat behind a green suite.
+        i = self._by_id.get(str(run_id))
+        if i is None:
+            raise KeyError(f"run {run_id!r} is not in the ledger")
+        self.rows[i].update(_decision_columns(decision))
+
+    def append_decision(self, row: Mapping[str, Any], decision: "Decision") -> None:
+        """Append a new run WITH its decision in one step — what a harness does at end of run.
+
+        The outcome is left unset on purpose: it is not known yet, and a row that carries a
+        decision but no outcome is exactly what `evidence()` must ignore until you observe one.
+        """
+        r = dict(row)
+        r.setdefault(self.outcome, None)
+        r.update(_decision_columns(decision))
+        self.append(r)
+
+    def evidence(self, *, model_ref: Optional[str] = None, n_min: int = 30,
+                 small_n_below: int = 100) -> Dict[str, Any]:
+        """Did acting on the band change the outcome? Acted vs control, WITHIN the act band.
+
+        THIS IS THE NUMBER THE ENGINE CANNOT GIVE YOU. `hs_action_evidence` splits on lever
+        ATTESTATION — acted means a compliant `hs_attest_action` — so a routing decision, which
+        has no lever_token, never reaches its acted cell, and everything else lands in its
+        comparison arm: refused rows, escalated rows, your control arm, and entities nobody
+        looked at. That comparison answers a different question than the one you asked.
+
+        Here both cells are drawn from the SAME band. Treated: band `act`, not held out, and the
+        loop actually acted on it. Control: band `act`, held out by `control_arm`, scored and
+        recorded but never acted on. That is the contrast the control arm exists to make.
+
+        Floors and interval match the engine's: `live` is None until each cell has `n_min` rows
+        with a known outcome, `small_n` is True below `small_n_below`, and the interval is
+        Newcombe on the difference (control − treated).
+
+        NOTE THE SIGN. This reports control MINUS treated, so on an adverse outcome a positive
+        number means acting helped. `hs_action_evidence.diff` is the other way round (acted minus
+        not-acted). The two are otherwise the same construction — verified equal to within 5e-9 —
+        but placed side by side without reading the field names, an improvement looks like a
+        regression.
+        """
+        def cell(pred) -> Dict[str, Any]:
+            rows = [r for r in self.rows
+                    if r.get(self.outcome) is not None and pred(r)
+                    and (model_ref is None or r.get("hs_model_ref") == model_ref)]
+            n = len(rows)
+            k = sum(int(r[self.outcome]) for r in rows)
+            return {"n": n, "outcome_rate": (k / n) if n else None}
+
+        # `action != "default"` rather than `== "intercept"`. On a DESIRABLE outcome a certified
+        # row is one to let through, so `decide()` returns "proceed" — keying on "intercept"
+        # left the treated cell permanently empty for every desirable-outcome loop, which is
+        # half of them, and `live` then stayed None forever with nothing saying why.
+        treated = cell(lambda r: r.get("hs_band") == "act" and not _as_bool(r.get("hs_control"))
+                       and r.get("hs_action") not in (None, "default"))
+        control = cell(lambda r: r.get("hs_band") == "act" and _as_bool(r.get("hs_control")))
+        out: Dict[str, Any] = {
+            "model_ref": model_ref, "treated": treated, "control": control, "live": None,
+            "live_floor": {"n_min": n_min, "small_n_below": small_n_below},
+        }
+        if treated["n"] >= n_min and control["n"] >= n_min:
+            p1, p2 = control["outcome_rate"], treated["outcome_rate"]
+            lo, hi = _newcombe(p1, control["n"], p2, treated["n"])
+            out["live"] = {"difference_control_minus_treated": p1 - p2, "ci95": [lo, hi],
+                           "small_n": min(treated["n"], control["n"]) < small_n_below}
+        return out
+
+    def fit_rows(self) -> List[Dict[str, Any]]:
+        """The labelled rows WITHOUT the loop's own decision columns — what you send to
+        `rank_topk`. A model fitted on its predecessor's bands is learning its own echo."""
+        return [{k: v for k, v in r.items() if k not in self.DECISION_COLUMNS}
+                for r in self.rows if r.get(self.outcome) is not None]
+
+    # -- persistence --------------------------------------------------------------------------
+
+    def save(self, path: str) -> None:
+        """JSON Lines, one row per line, in order. The ledger is yours; this is a default, not
+        a storage engine — past a few hundred thousand rows, keep it in your warehouse."""
+        with open(path, "w", encoding="utf-8") as fh:
+            for r in self.rows:
+                # Missing goes out as JSON null, and `allow_nan=False` makes a stray non-finite
+                # raise rather than write a bare `NaN` token — which is not JSON, so jq, a
+                # warehouse loader, or any non-Python reader chokes on a file this method
+                # presents as the default ledger format. `default=str` alone also wrote pandas
+                # sentinels as the TEXT "NaT" and "<NA>", so a reloaded null came back a string
+                # and the time axis would not parse.
+                fh.write(json.dumps({k: (None if _missing(v) else v) for k, v in r.items()},
+                                    sort_keys=True, allow_nan=False, default=str) + "\n")
+
+    @classmethod
+    def load(cls, path: str, **kwargs: Any) -> "Ledger":
+        """Rebuild a ledger from `save`. Rows go back through `append`, so the same refusals
+        apply on the way in: an unparsable timestamp or a duplicate run id is caught here rather
+        than silently producing priors that disagree with the engine's."""
+        ledger = cls(**kwargs)
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                if line.strip():
+                    ledger.append(json.loads(line))
+        return ledger
 
 
 def control_arm(run_id: Any, *, fraction: float = DEFAULT_CONTROL_FRACTION, salt: str = "") -> bool:
@@ -273,6 +456,61 @@ def control_arm(run_id: Any, *, fraction: float = DEFAULT_CONTROL_FRACTION, salt
     h = hashlib.sha256(f"{salt}\x1f{run_id}".encode("utf-8")).digest()
     bucket = int.from_bytes(h[:4], "big") % 10_000
     return bucket < int(round(fraction * 10_000))
+
+
+# ── the intervals ────────────────────────────────────────────────────────────────────────────
+#
+# The same two constructions the engine uses in `verdict_layer/evidence.py`, so a number you
+# compute from your own ledger and a number the engine reports are comparable rather than merely
+# similar. Closed form, stdlib only: no scipy, no simulation, no seed.
+
+
+def _wilson(k: int, n: int, z: float = 1.959964) -> Tuple[float, float]:
+    """Wilson score interval for a proportion. `n == 0` is the whole unit interval, not 0/0."""
+    if n == 0:
+        return (0.0, 1.0)
+    p = k / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def _newcombe(p1: float, n1: int, p2: float, n2: int) -> Tuple[float, float]:
+    """Newcombe (1998) method 10 — the hybrid-score interval on a DIFFERENCE of two proportions.
+
+    Not a normal approximation: near 0 or 1, and at the small cell counts this loop actually
+    reaches, the Wald interval runs outside [0, 1] and reports precision it does not have.
+    """
+    l1, u1 = _wilson(round(p1 * n1), n1)
+    l2, u2 = _wilson(round(p2 * n2), n2)
+    d = p1 - p2
+    return (d - math.sqrt((p1 - l1) ** 2 + (u2 - p2) ** 2),
+            d + math.sqrt((u1 - p1) ** 2 + (p2 - l2) ** 2))
+
+
+def _as_bool(value: Any) -> bool:
+    """A decision column's truth after a round trip through CSV.
+
+    `csv.DictReader` yields the STRING "False", and `bool("False")` is True — so a ledger saved
+    and reloaded as CSV put every treated run in the CONTROL cell and inverted the comparison
+    this module exists to make, silently. JSON survives a round trip; CSV does not, and the
+    ledger is the caller's table, so it can arrive either way.
+    """
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "0", "no", "none", "null", "nan")
+    return bool(value)
+
+
+def _decision_columns(d: "Decision") -> Dict[str, Any]:
+    """What a Decision leaves on its run's row, so the ledger can compare arms later.
+
+    Prefixed `hs_` and kept to six flat values: the ledger is the caller's table, and these have
+    to survive a round trip through CSV and JSON without a schema.
+    """
+    return {"hs_model_ref": (d.verdict or {}).get("model_ref"), "hs_band": d.band,
+            "hs_autonomy": d.autonomy, "hs_action": d.action, "hs_control": d.control,
+            "hs_verdict_id": (d.verdict or {}).get("verdict_id")}
 
 
 # ── the gate ─────────────────────────────────────────────────────────────────────────────────
@@ -328,7 +566,9 @@ def gate(hs: Any, model_ref: str, ledger: Ledger, row: Mapping[str, Any], *,
     needs its band — but its action is always "default".
     """
     run_id = row.get(ledger.identifier)
-    scored_row = ledger.with_priors(row)
+    # NaN, pandas NA and NaT go out as JSON null, which the engine reads as NULL. json.dumps writes
+    # NaN as a bare token that is not JSON (the product answers 422), and NA/NaT do not encode at all.
+    scored_row = {k: (None if _missing(v) else v) for k, v in ledger.with_priors(row).items()}
     resp = hs.score_entity(model_ref, scored_row, subject_kind=subject_kind, entity_id=str(run_id),
                            acknowledge_decision_support=acknowledge_decision_support)
     d = decide(resp.get("entity") or {}, resp.get("verdict") or {}, run_id=run_id,
@@ -386,25 +626,40 @@ def _spearman(x: Sequence[float], y: Sequence[float]) -> Optional[float]:
     return sum((a - mx) * (b - my) for a, b in zip(rx, ry)) / math.sqrt(sxx * syy)
 
 
-def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str, Any]], *,
+def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Iterable[Mapping[str, Any]], *,
              time_axis: str = "ts", cutoff: Any = None, bins: int = 6) -> Dict[str, Any]:
     """Does this pattern describe the problem, or the calendar?
 
     `conditions` is `explain_drivers()["pattern"]["conditions"]`, verbatim. `rows` is the frame
     you sent the engine (with the prior features attached — `Ledger.with_priors` on each row
-    reproduces them). Returns per-condition verdicts and `era_locked`.
+    reproduces them; `Ledger.rows` alone does not carry them). Returns per-condition verdicts,
+    `era_locked` and `clock_like`; a pattern is clean only when BOTH are false. Raises ValueError
+    on no rows, or when a condition's feature is on none of the rows, because a condition graded
+    over nothing, or on a missing feature, grades 'ok' by construction.
 
     Two tests. FORWARD (needs `cutoff`): firing rate on rows before the cutoff vs after — a
     condition that fires on the fit era and never after is DEAD. IN-FIT (no cutoff needed):
     firing rate across time bins inside the window, and the rank correlation of the raw feature
     against time — a feature that IS a clock is CLOCK-LIKE whatever it is called.
     """
+    rows = list(rows)            # read more than once below: a generator would be empty the second time
+    if not rows:
+        raise ValueError("era_lock got no rows: every condition would grade 'ok' by construction. "
+                         "Pass [ledger.with_priors(r) for r in ledger.rows].")
     timed = sorted(((t, r) for t, r in ((parse_ts(r.get(time_axis)), r) for r in rows) if t is not None),
                    key=lambda tr: tr[0])
     cut = parse_ts(cutoff) if cutoff is not None else None
     fit_timed = [(t, r) for t, r in timed if cut is None or t < cut]
     fit = [r for _, r in fit_timed]
     hold = [r for t, r in timed if cut is not None and t >= cut]
+
+    present = set().union(*(r.keys() for r in rows))
+    absent = sorted({c["feature"] for c in conditions} - present)
+    if absent:
+        raise ValueError(
+            f"feature(s) {absent} absent from every row: a condition on a missing feature grades "
+            "'ok' by construction. The ledger does not store the trace@1 priors; pass "
+            "[ledger.with_priors(r) for r in ledger.rows].")
 
     results, verdicts = [], []
     for c in conditions:
@@ -458,5 +713,36 @@ def era_lock(conditions: Sequence[Mapping[str, Any]], rows: Sequence[Mapping[str
     }
 
 
+# ── levers you can actually pull ─────────────────────────────────────────────────────────────
+
+#: The six `trace@1` emits, by suffix. None of them is a knob: they are that group's own past.
+_HISTORY_FEATURE = re.compile(r"_(prior_n|prior_outcome_rate)$")
+
+
+def actionable(lever: Mapping[str, Any]) -> bool:
+    """False when every change the lever asks for is on a HISTORY feature.
+
+    Measured on the sample corpus: the top-ranked run's lever read "decrease agent_prior_n" — a
+    count of how many runs that agent has already done. Nobody can pull that. The engine emits
+    it because the feature is in the pattern, and the engine is right to: whether a feature is a
+    KNOB is the caller's knowledge, not a fact about the data. Deciding that here is the
+    caller's job, which is why this lives in the SDK and not in the engine's output.
+
+    Pair with `safeguards.attestable` (does it carry a token) and `safeguards.lever_helps`
+    (does it move the outcome the way you want).
+    """
+    changes = (lever or {}).get("changes") or []
+
+    def _is_a_knob(change: Any) -> bool:
+        # A change with no feature named is not evidence of a knob. It used to read as `""`,
+        # match no history suffix, and come back actionable — a SAFEGUARD failing open on
+        # exactly the malformed input it should distrust, and disagreeing with the empty-list
+        # case right beside it.
+        feature = str((change or {}).get("feature") or "").strip()
+        return bool(feature) and not _HISTORY_FEATURE.search(feature)
+
+    return any(_is_a_knob(c) for c in changes)
+
+
 __all__ = ["GROUP_ROLES", "DEFAULT_CONTROL_FRACTION", "prior_feature_names", "parse_ts", "Ledger",
-           "control_arm", "Decision", "decide", "gate", "era_lock"]
+           "control_arm", "Decision", "decide", "gate", "era_lock", "actionable"]
