@@ -55,6 +55,8 @@ const OPS = {
   report: { path: "/v1/report-outcome", label: "Report outcome (free)", cost: "free" },
   evidence: { path: "/v1/action-evidence", label: "Action evidence (free)", cost: "free" },
   drift: { path: "/v1/drift-status", label: "Drift status (free)", cost: "free" },
+  // — supply, contract 2.1.0 —
+  registerSource: { path: "/v1/register-source", label: "Register a source (free)", cost: "free" },
 } as const;
 
 type Op = keyof typeof OPS;
@@ -218,6 +220,23 @@ export class HunterSeeker implements INodeType {
       // ── provide dataset ───────────────────────────────────────────────────────────────────
       { displayName: "Fetch URL", name: "provideFetchUrl", type: "string", default: "", ...show("provide"), description: "A public https CSV the server downloads. Leave empty to receive an upload_url to PUT to instead." },
       { displayName: "Name", name: "datasetName", type: "string", default: "", ...show("provide") },
+
+      // ── register a source (contract 2.1.0) ────────────────────────────────────────────────
+      {
+        displayName: "Source Kind",
+        name: "sourceKind",
+        type: "options",
+        options: [
+          { name: "File (a dataset an upload produced)", value: "file" },
+          { name: "Warehouse (by contract)", value: "warehouse" },
+          { name: "Event stream (by contract)", value: "event_stream" },
+        ],
+        default: "file",
+        ...show("registerSource"),
+      },
+      { displayName: "Source Name", name: "sourceName", type: "string", default: "", ...show("registerSource"), description: "Shown on the Sources screen." },
+      { displayName: "Dataset ID", name: "sourceDatasetId", type: "string", default: "", ...show("registerSource"), description: "For kind File: the dataset_id from Provide dataset (after the PUT) or Upload a table. Consumed by this call." },
+      { displayName: "Contract (JSON)", name: "sourceContract", type: "json", default: "{}", ...show("registerSource"), description: "Optional ODCS-shaped contract: columns[{name, logical_type}], primary_key_candidates[], time_columns[{name, semantics}]." },
 
       // ── score ─────────────────────────────────────────────────────────────────────────────
       { displayName: "Entity ID", name: "entityId", type: "string", default: "", ...show("score", "report", "attest") },
@@ -484,6 +503,15 @@ export class HunterSeeker implements INodeType {
         case "evidence":
         case "drift":
           body = { model_ref: p("modelRef") };
+          break;
+
+        case "registerSource":
+          body = {
+            kind: p("sourceKind"),
+            name: p("sourceName"),
+            ...opt("dataset_id", p("sourceDatasetId")),
+            ...optObj("contract", json("sourceContract")),
+          };
           break;
       }
 

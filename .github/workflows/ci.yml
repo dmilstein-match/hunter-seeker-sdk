@@ -15,8 +15,8 @@ jobs:
       # Required. Red until the product publishes the real schemas for the eight existing tools.
       - run: python scripts/check_spec.py
       # Compares the committed spec with the published one for this contract version.
-      - run: scripts/pull_spec.sh 2.0.0
-        continue-on-error: true   # turn required once the product endpoint exists
+      - run: scripts/pull_spec.sh 2.1.0
+        continue-on-error: true   # turn required once the product endpoint serves 2.1.0
   python:
     runs-on: ubuntu-latest
     steps:
@@ -60,6 +60,9 @@ jobs:
         # no leg that could see Python, so the gap could never fail a build.
         env:
           HS_KEY: ${{ secrets.HS_TEST_KEY }}
+          # The spec leg reads THIS checkout's contract (the product repo generates it and this
+          # repo commits it), not the previously published one: a contract bump lands here first.
+          HS_OPENAPI: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/openapi/openapi.json
         run: node scripts/hs-surface-parity.mjs n8n/dist/nodes/HunterSeeker/HunterSeeker.node.js --strict-node --strict-python
 
   skills:

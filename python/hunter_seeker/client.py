@@ -262,6 +262,16 @@ class Client:
     def drift_status(self, model_ref: str) -> Dict[str, Any]:
         return self._call("/v1/drift-status", {"model_ref": model_ref})
 
+    # -- contract 2.1.0 ------------------------------------------------------- #
+    def register_source(self, kind: str, name: str, *, dataset_id: Optional[str] = None,
+                        contract: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+        """Register a source the workspace keeps (file | warehouse | event_stream). For a file, pass
+        the dataset_id an upload produced; it becomes the source's data."""
+        body: Dict[str, Any] = {"kind": kind, "name": name}
+        if dataset_id: body["dataset_id"] = dataset_id
+        if contract: body["contract"] = dict(contract)
+        return self._call("/v1/register-source", body)
+
     def export_bundle(self, verdict_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         body = {"verdict_id": verdict_id}
         if entity_id: body["entity_id"] = entity_id
