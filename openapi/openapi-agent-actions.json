@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Agent Actions (curated)",
-    "version": "2.5.0",
+    "version": "2.6.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -3826,6 +3826,104 @@
           "record",
           "interval"
         ]
+      },
+      "hs_readiness_input": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The governed agent (the case binding's agent id, or the key the Agents list shows)."
+          },
+          "kind": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "One kind of work to check, as attribute values (e.g. { task: 'refunds', channel: 'email' }); omit for every kind the agent has seen."
+          }
+        },
+        "required": ["agent_id"],
+        "additionalProperties": false
+      },
+      "hs_readiness_output": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["ok", "none"]
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "decision_point": {
+            "type": "string"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "kind_hash", "mode", "all_green", "computed_at", "rows"],
+              "properties": {
+                "kind": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "kind_hash": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": ["shadow", "live"]
+                },
+                "all_green": {
+                  "type": "boolean"
+                },
+                "computed_at": {
+                  "type": "string"
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "label", "ok", "measurement"],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "ok": {
+                        "type": ["boolean", "null"]
+                      },
+                      "measurement": {
+                        "type": "string"
+                      },
+                      "remedy": {
+                        "type": ["string", "null"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "guidance": {
+            "type": "string"
+          }
+        },
+        "required": ["result"]
       }
     }
   }

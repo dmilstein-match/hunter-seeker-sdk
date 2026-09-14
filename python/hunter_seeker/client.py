@@ -351,6 +351,15 @@ class Client:
         if abandoned is not None: body["abandoned"] = abandoned
         return self._call("/v1/decide", body)
 
+    # -- contract 2.6.0: the go-live checklist as data -------------------------- #
+    def readiness(self, agent_id: str, *, kind: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:
+        """Free. The go-live checklist for one agent, per kind of work: eleven rows, each ok
+        (True | False | None = not applicable) with its measurement and, when red, the remedy;
+        all_green is what a flip to live requires. `kind` narrows to one kind of work."""
+        body: Dict[str, Any] = {"agent_id": agent_id}
+        if kind: body["kind"] = dict(kind)
+        return self._call("/v1/readiness", body)
+
     def export_bundle(self, verdict_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         body = {"verdict_id": verdict_id}
         if entity_id: body["entity_id"] = entity_id

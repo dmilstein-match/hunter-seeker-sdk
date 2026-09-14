@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Verdict Layer API",
-    "version": "2.5.0",
+    "version": "2.6.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -51,7 +51,7 @@
   ],
   "x-hs-deprecation": {
     "policy": "12 months",
-    "served_in_parallel": ["1.4.0", "2.0.0", "2.1.0", "2.2.0", "2.3.0", "2.4.0"],
+    "served_in_parallel": ["1.4.0", "2.0.0", "2.1.0", "2.2.0", "2.3.0", "2.4.0", "2.5.0"],
     "sunset_of_1_4_0": "2027-09-01"
   },
   "paths": {
@@ -2131,6 +2131,63 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/hs_decide_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/readiness": {
+      "post": {
+        "operationId": "hs_readiness",
+        "summary": "The go-live checklist for one agent, per kind of work, as data.",
+        "description": "Free; no engine run. The go-live checklist for one agent, per kind of work, as data: sources fresh, bindings resolved, outcome observable (coverage ≥ 90%, rate 2–98%, polarity set), case-key agreement (≥ 95% keyed in 7 days), cost table complete, record settled (with 'about N more closed cases' while it is not), shadow graded, drift watchable (the volume floor, or a longer bin), decision point verified (the smoke test), receipts verify (the last twenty re-verified offline against the worker's keys), pattern actionable (when a finding feeds the agent). Each row carries ok (true | false | null = not applicable), its measurement and, when red, the remedy. all_green is what a flip to live requires; the flip itself is a person's action on the Settings screen, never a tool. Common mistakes: reading a green all_green as live (mode says whether the kind is live); expecting the record-settled row to move faster than the arithmetic (the closed-cases number is the Wilson bound, not an estimate).",
+        "tags": ["govern"],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Readiness (go-live checklist)",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_readiness_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_readiness_output"
                 }
               }
             }
@@ -5570,6 +5627,104 @@
           "record",
           "interval"
         ]
+      },
+      "hs_readiness_input": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "The governed agent (the case binding's agent id, or the key the Agents list shows)."
+          },
+          "kind": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "One kind of work to check, as attribute values (e.g. { task: 'refunds', channel: 'email' }); omit for every kind the agent has seen."
+          }
+        },
+        "required": ["agent_id"],
+        "additionalProperties": false
+      },
+      "hs_readiness_output": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["ok", "none"]
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "decision_point": {
+            "type": "string"
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["kind", "kind_hash", "mode", "all_green", "computed_at", "rows"],
+              "properties": {
+                "kind": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "kind_hash": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": ["shadow", "live"]
+                },
+                "all_green": {
+                  "type": "boolean"
+                },
+                "computed_at": {
+                  "type": "string"
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "label", "ok", "measurement"],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "ok": {
+                        "type": ["boolean", "null"]
+                      },
+                      "measurement": {
+                        "type": "string"
+                      },
+                      "remedy": {
+                        "type": ["string", "null"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "guidance": {
+            "type": "string"
+          }
+        },
+        "required": ["result"]
       }
     }
   }

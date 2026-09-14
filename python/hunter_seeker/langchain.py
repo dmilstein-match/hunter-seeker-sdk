@@ -184,10 +184,15 @@ def verdict_tools(hs: Client) -> List[Any]:
         """One decision (costs one decision) for a case: lane (act | review | human | none — the record's answer), route (what to do: the lane when the decision applied, else none), band, max_autonomy, likelihood_direction, a signed receipt and a case_ref — computed from the strictly-earlier record of this exact kind of work (cases closed before this one opened), the workspace's cost table (hs_set_policy) at both ends of a 95% Wilson interval, the control slice and the agent's mode. Branch on route ONLY. In shadow every receipt routes none with reason shadow while lane says what the agent would have done; smoke returns a signed receipt and writes nothing; a kind with no record is none with reason no_record — never a guess. case = {case_id?, kind: {attr: value}, actor: {kind, name}, opened_at}."""
         return hs.decide(agent_id, case, mode=mode, model_ref=model_ref, open_levers=open_levers, abandoned=abandoned)
 
+    @tool
+    def hs_readiness(agent_id: str, kind: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Free. The go-live checklist for one agent, per kind of work, as data: eleven rows (sources fresh, bindings resolved, outcome observable, case-key agreement, cost table complete, record settled — with 'about N more closed cases' while it is not —, shadow graded, drift watchable, decision point verified, receipts verify, pattern actionable), each with ok (true | false | null = not applicable), its measurement and, when red, the remedy. all_green is what a flip to live requires; the flip itself is a person's action on the Settings screen. `kind` narrows to one kind of work."""
+        return hs.readiness(agent_id, kind=kind)
+
     # Every operation the REST surface exposes, which is what the parity gate checks.
     return [hs_describe_capabilities, hs_provide_dataset, hs_append_rows, hs_rank_topk,
             hs_poll_task, hs_model_quality, hs_explain_drivers, hs_explain_levers,
             hs_context_brief, hs_score_entity, hs_score_batch, hs_verify_verdict,
             hs_attest_action, hs_report_outcome, hs_action_evidence, hs_drift_status,
             hs_register_source, hs_propose_binding, hs_confirm_binding, hs_get_binding,
-            hs_ingest_events, hs_set_policy, hs_get_policy, hs_decide]
+            hs_ingest_events, hs_set_policy, hs_get_policy, hs_decide, hs_readiness]
