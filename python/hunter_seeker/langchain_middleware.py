@@ -98,4 +98,78 @@ class LoopMiddleware(AgentMiddleware):
         return None
 
 
-__all__ = ["LoopMiddleware", "LoopState"]
+class DecideState(AgentState):
+    """The agent state plus what `DecideMiddleware` writes."""
+    hs_route: NotRequired[str]
+    hs_decision: NotRequired[Any]
+    hs_attested: NotRequired[bool]
+
+
+class DecideMiddleware(AgentMiddleware):
+    """The decision point as LangChain middleware (Datagoat unit 23): `before_agent` asks
+    `POST /v1/decide` once, inside a two-second budget, and branches on ROUTE — `act` and `none`
+    let the agent run; `review` and `human` jump to the end before the model is called, the
+    `RouteDecision` on the state under `hs_decision` (and `hs_route`) for the harness to route to a
+    person. `after_agent` sends one `action.attested` per tool the run called (the tool NAME only,
+    read from the state's messages) carrying the `arm` and `lever_id` the receipt put on the
+    decision. Any error or timeout is the customer's named fallback with its reason — never an
+    exception into the graph, never a denial.
+
+        loop = DecideMiddleware(hs, "ag_...", case_from_state=lambda state, runtime: {...},
+                                source="urn:my-runtime:refunds", fallback="none")
+        agent = create_agent(model=..., tools=[...], middleware=[loop])
+    """
+
+    state_schema = DecideState
+
+    def __init__(self, hs: Any, agent_id: str, *, case_from_state: RowFromState, source: Optional[str] = None,
+                 fallback: str = "none", timeout: float = 2.0, mode: Optional[str] = None,
+                 stop_on: tuple = ("review", "human"),
+                 tools_from_state: Optional[Callable[[Mapping[str, Any]], list]] = None) -> None:
+        super().__init__()
+        from .runtime import decide_case  # local: keeps the scorecard path importable on its own
+        self.hs, self.agent_id, self.case_from_state = hs, agent_id, case_from_state
+        self.source, self.fallback, self.timeout, self.mode = source, fallback, timeout, mode
+        self.stop_on, self.tools_from_state = tuple(stop_on), tools_from_state
+        self._decide_case = decide_case
+        self.attested: list = []
+
+    @hook_config(can_jump_to=["end"])
+    def before_agent(self, state: Mapping[str, Any], runtime: Any) -> Optional[Dict[str, Any]]:
+        case = dict(self.case_from_state(state, runtime))
+        d = self._decide_case(self.hs, self.agent_id, case, fallback=self.fallback, timeout=self.timeout,
+                              mode=self.mode)
+        out: Dict[str, Any] = {"hs_route": d.route, "hs_decision": d, "hs_attested": False}
+        if d.route in self.stop_on:
+            out["jump_to"] = "end"
+        return out
+
+    def after_agent(self, state: Mapping[str, Any], runtime: Any) -> Optional[Dict[str, Any]]:
+        d = state.get("hs_decision")
+        if state.get("hs_attested") or d is None or not self.source:
+            return None
+        from .runtime import attest
+        case_ref = getattr(d, "case_ref", None) or ""
+        if not case_ref:
+            return None
+        names = self.tools_from_state(state) if self.tools_from_state else _tool_names(state)
+        for name in names:
+            ok = attest(self.hs, self.source, case_ref, name, arm=getattr(d, "arm", None),
+                        lever_id=getattr(d, "lever_id", None), timeout=self.timeout)
+            self.attested.append({"case_ref": case_ref, "tool": name, "sent": ok})
+        return {"hs_attested": True}
+
+
+def _tool_names(state: Mapping[str, Any]) -> list:
+    """The tool NAMES the run called, from the AI messages' tool calls; never their arguments."""
+    names: list = []
+    for m in state.get("messages") or []:
+        calls = getattr(m, "tool_calls", None) or (m.get("tool_calls") if isinstance(m, Mapping) else None) or []
+        for c in calls:
+            name = c.get("name") if isinstance(c, Mapping) else getattr(c, "name", None)
+            if name and name not in names:
+                names.append(str(name))
+    return names
+
+
+__all__ = ["LoopMiddleware", "LoopState", "DecideMiddleware", "DecideState"]

@@ -1,6 +1,6 @@
 [project]
 name = "hunter-seeker"
-version = "2.3.0"
+version = "2.4.0"
 description = "Python client and framework tools for the Hunter-Seeker Verdict layer: deterministic, signed, refusable decisions for agents."
 requires-python = ">=3.10"
 dependencies = ["hs-verify>=0.1"]
@@ -20,6 +20,9 @@ langchain-middleware = ["langchain>=1.0"]             # LoopMiddleware: the harn
 # it the error counter reads 0 on every run.
 claude-agent = ["claude-agent-sdk>=0.1.26"]
 crewai = ["crewai>=0.100", "crewai-tools>=0.40"]
+# Datagoat unit 23: the decision point from a runtime; both modules load without the package
+adk = ["google-adk>=1.0"]
+openai-agents = ["openai-agents>=0.1"]
 # What CI and the publish workflow install — ONE list, so a release runs the same suite CI does,
 # including the adapter tests that drive the real frameworks (a stubbed framework passed a
 # middleware that did nothing inside the real one).
