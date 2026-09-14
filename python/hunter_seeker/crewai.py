@@ -212,6 +212,14 @@ def _specs(hs: Client) -> List[tuple]:
          "actionable), each ok / measurement / remedy; all_green is what a flip to live requires.",
          {"agent_id": (str, ...), "kind": (Optional[Dict[str, str]], None)},
          lambda agent_id, kind=None: hs.readiness(agent_id, kind=kind)),
+
+        ("hs_register_webhook",
+         "Free. Registers an https endpoint for signed webhook deliveries of the workspace's "
+         "events (verdict.drift, run.honest_empty, escalate, ...). Returns webhook_id and the "
+         "secret ONCE; verify deliveries with HMAC-SHA256 over '<webhook-id>.<webhook-timestamp>."
+         "<body>' under the decoded secret; dedupe on webhook-id.",
+         {"url": (str, ...), "events": (List[str], ...), "label": (Optional[str], None)},
+         lambda url, events, label=None: hs.register_webhook(url, events, label=label)),
     ]
 
 
