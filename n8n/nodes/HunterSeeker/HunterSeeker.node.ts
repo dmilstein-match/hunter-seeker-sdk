@@ -70,6 +70,7 @@ const OPS = {
   decide: { path: "/v1/decide", label: "Decide (one decision)", cost: "one decision" },
   // — govern, contract 2.6.0: the go-live checklist as data —
   readiness: { path: "/v1/readiness", label: "Readiness (free)", cost: "free" },
+  registerWebhook: { path: "/v1/register-webhook", label: "Register webhook (free)", cost: "free" },
 } as const;
 
 /** The receipt's `route` is what a workflow branches on (never `lane`); the ports are its values. */
@@ -292,6 +293,10 @@ export class HunterSeeker implements INodeType {
       // — readiness (2.6.0) —
       { displayName: "Agent ID", name: "readinessAgentId", type: "string", default: "", required: true, ...show("readiness"), description: "The governed agent whose go-live checklist to read." },
       { displayName: "Kind (JSON)", name: "readinessKind", type: "json", default: "{}", ...show("readiness"), description: "One kind of work as attribute values, e.g. { task: 'refunds' }; empty for every kind the agent has seen." },
+      // — register webhook (2.8.0) —
+      { displayName: "Endpoint URL", name: "webhookUrl", type: "string", default: "", required: true, ...show("registerWebhook"), description: "The https URL your receiver listens on; the secret comes back once." },
+      { displayName: "Events", name: "webhookEvents", type: "multiOptions", default: ["verdict.drift", "run.honest_empty", "escalate"], ...show("registerWebhook"), options: ["run.completed", "run.honest_empty", "verdict.drift", "evidence.updated", "escalate", "trial.concluded", "source.stale", "source.paused", "agent.kind_live", "policy.changed", "binding.confirmed", "verify.failed"].map((v) => ({ name: v, value: v })), description: "The events to deliver, signed (Standard Webhooks headers)." },
+      { displayName: "Label", name: "webhookLabel", type: "string", default: "", ...show("registerWebhook"), description: "A name for the card on Settings → Notifications." },
       { displayName: "Kinds (JSON)", name: "policyKinds", type: "json", default: "[]", ...show("getPolicy"), description: "Kinds of work to evaluate: [{ service: 'payments-api', size: 'L' }] — each comes back with its unattended threshold or the missing cell." },
 
       // ── score ─────────────────────────────────────────────────────────────────────────────
@@ -612,6 +617,11 @@ export class HunterSeeker implements INodeType {
         case "readiness": {
           const kind = json("readinessKind");
           body = { agent_id: p("readinessAgentId"), ...(kind && typeof kind === "object" && Object.keys(kind).length ? { kind } : {}) };
+          break;
+        }
+        case "registerWebhook": {
+          const events = p("webhookEvents", []);
+          body = { url: p("webhookUrl"), events: Array.isArray(events) ? events : [], ...opt("label", p("webhookLabel")) };
           break;
         }
       }

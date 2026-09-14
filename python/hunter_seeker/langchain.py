@@ -189,10 +189,16 @@ def verdict_tools(hs: Client) -> List[Any]:
         """Free. The go-live checklist for one agent, per kind of work, as data: eleven rows (sources fresh, bindings resolved, outcome observable, case-key agreement, cost table complete, record settled — with 'about N more closed cases' while it is not —, shadow graded, drift watchable, decision point verified, receipts verify, pattern actionable), each with ok (true | false | null = not applicable), its measurement and, when red, the remedy. all_green is what a flip to live requires; the flip itself is a person's action on the Settings screen. `kind` narrows to one kind of work."""
         return hs.readiness(agent_id, kind=kind)
 
+    @tool
+    def hs_register_webhook(url: str, events: List[str], label: Optional[str] = None) -> Dict[str, Any]:
+        """Free. Registers an https endpoint for signed webhook deliveries of the workspace's events — run.completed, run.honest_empty, verdict.drift, evidence.updated, escalate, trial.concluded, source.stale, source.paused, agent.kind_live, policy.changed, binding.confirmed, verify.failed. Returns webhook_id and the secret ONCE (whsec_...): verify each delivery with HMAC-SHA256 over '<webhook-id>.<webhook-timestamp>.<body>' under the decoded secret against the v1 value in webhook-signature, and dedupe on webhook-id (a replay reuses it). The body carries names, ids and timestamps only."""
+        return hs.register_webhook(url, events, label=label)
+
     # Every operation the REST surface exposes, which is what the parity gate checks.
     return [hs_describe_capabilities, hs_provide_dataset, hs_append_rows, hs_rank_topk,
             hs_poll_task, hs_model_quality, hs_explain_drivers, hs_explain_levers,
             hs_context_brief, hs_score_entity, hs_score_batch, hs_verify_verdict,
             hs_attest_action, hs_report_outcome, hs_action_evidence, hs_drift_status,
             hs_register_source, hs_propose_binding, hs_confirm_binding, hs_get_binding,
-            hs_ingest_events, hs_set_policy, hs_get_policy, hs_decide, hs_readiness]
+            hs_ingest_events, hs_set_policy, hs_get_policy, hs_decide, hs_readiness,
+            hs_register_webhook]

@@ -360,6 +360,17 @@ class Client:
         if kind: body["kind"] = dict(kind)
         return self._call("/v1/readiness", body)
 
+    def register_webhook(self, url: str, events: Sequence[str], *, label: Optional[str] = None) -> Dict[str, Any]:
+        """Free. Registers an https endpoint for signed webhook deliveries of the workspace's
+        events (run.completed, run.honest_empty, verdict.drift, evidence.updated, escalate,
+        trial.concluded, source.stale, source.paused, agent.kind_live, policy.changed,
+        binding.confirmed, verify.failed). Returns webhook_id and the secret ONCE (whsec_...):
+        verify each delivery with HMAC-SHA256 over '<webhook-id>.<webhook-timestamp>.<body>'
+        under the decoded secret against the v1 value in webhook-signature; dedupe on webhook-id."""
+        body: Dict[str, Any] = {"url": url, "events": list(events)}
+        if label: body["label"] = label
+        return self._call("/v1/register-webhook", body)
+
     def export_bundle(self, verdict_id: str, entity_id: Optional[str] = None) -> Dict[str, Any]:
         body = {"verdict_id": verdict_id}
         if entity_id: body["entity_id"] = entity_id

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Verdict Layer API",
-    "version": "2.7.0",
+    "version": "2.8.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -51,7 +51,17 @@
   ],
   "x-hs-deprecation": {
     "policy": "12 months",
-    "served_in_parallel": ["1.4.0", "2.0.0", "2.1.0", "2.2.0", "2.3.0", "2.4.0", "2.5.0", "2.6.0"],
+    "served_in_parallel": [
+      "1.4.0",
+      "2.0.0",
+      "2.1.0",
+      "2.2.0",
+      "2.3.0",
+      "2.4.0",
+      "2.5.0",
+      "2.6.0",
+      "2.7.0"
+    ],
     "sunset_of_1_4_0": "2027-09-01"
   },
   "paths": {
@@ -2188,6 +2198,63 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/hs_readiness_output"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/register-webhook": {
+      "post": {
+        "operationId": "hs_register_webhook",
+        "summary": "Register an endpoint for signed webhook deliveries of the workspace's events.",
+        "description": "Free; no engine run. Registers an endpoint that receives the workspace's events as signed webhooks: every delivery carries webhook-id (the event id; a replay reuses it), webhook-timestamp (unix seconds) and webhook-signature (v1,<base64 HMAC-SHA256 of '<id>.<timestamp>.<body>' under the secret>) — the Standard Webhooks headers. The secret (whsec_…) is returned ONCE in this response and never again; rotate it from Settings → Notifications. The body carries names, ids and timestamps only (id, type, ledger_kind, ref, at, workspace_id) — never a case's content. A non-2xx answer is retried five times over about a day; after that the card shows failed with the response code, and a person can replay. Events: run.completed, run.honest_empty, verdict.drift, evidence.updated, escalate, trial.concluded, source.stale, source.paused, agent.kind_live, policy.changed, binding.confirmed, verify.failed. Common mistakes: expecting the secret again later (store it now); registering an http URL (https only, except a loopback host); expecting content in the body (fetch the thing by ref through the API).",
+        "tags": ["govern"],
+        "x-hs-cost": "free",
+        "x-hs-agent-action": false,
+        "x-mcp-annotations": {
+          "title": "Register a webhook endpoint",
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "oauth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/hs_register_webhook_input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/hs_register_webhook_output"
                 }
               }
             }
@@ -4728,6 +4795,23 @@
             "type": "string",
             "enum": ["desirable", "adverse", "undeclared"],
             "description": "Whether the outcome is one you WANT (converted, renewed) or one you want to avoid (churned, defaulted). Declared by you and recorded on the binding; the engine reports direction and never infers this."
+          },
+          "input_responses": {
+            "type": "array",
+            "description": "Unit 22: answers to the input_request(s) an earlier call of this tool returned (the MCP _meta io.hunter-seeker/input_request, the REST hs-input-request header, or input_requests in a binding envelope): [{ item_id, option }]. Answered first, through the same Inbox row a person would answer; an item answered meanwhile is not an error.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["item_id", "option"],
+              "properties": {
+                "item_id": {
+                  "type": "string"
+                },
+                "option": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "required": ["source_ids"],
@@ -4897,6 +4981,23 @@
               "type": "string"
             },
             "description": "question id → option key, for every open question hs_propose_binding returned. A key the engine did not offer is refused (422 unknown_option)."
+          },
+          "input_responses": {
+            "type": "array",
+            "description": "Unit 22: answers to the input_request(s) an earlier call of this tool returned (the MCP _meta io.hunter-seeker/input_request, the REST hs-input-request header, or input_requests in a binding envelope): [{ item_id, option }]. Answered first, through the same Inbox row a person would answer; an item answered meanwhile is not an error.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["item_id", "option"],
+              "properties": {
+                "item_id": {
+                  "type": "string"
+                },
+                "option": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "required": ["binding_id"],
@@ -5498,6 +5599,23 @@
           "abandoned": {
             "type": "boolean",
             "description": "Unit 20 passes true when the analysis was abandoned: forces none with reason abandoned."
+          },
+          "input_responses": {
+            "type": "array",
+            "description": "Unit 22: answers to the input_request(s) an earlier call of this tool returned (the MCP _meta io.hunter-seeker/input_request, the REST hs-input-request header, or input_requests in a binding envelope): [{ item_id, option }]. Answered first, through the same Inbox row a person would answer; an item answered meanwhile is not an error.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["item_id", "option"],
+              "properties": {
+                "item_id": {
+                  "type": "string"
+                },
+                "option": {
+                  "type": "string"
+                }
+              }
+            }
           }
         },
         "required": ["agent_id", "case"],
@@ -5730,6 +5848,75 @@
           }
         },
         "required": ["result"]
+      },
+      "hs_register_webhook_input": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The https URL your receiver listens on (plain http only for a loopback host)."
+          },
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "run.completed",
+                "run.honest_empty",
+                "verdict.drift",
+                "evidence.updated",
+                "escalate",
+                "trial.concluded",
+                "source.stale",
+                "source.paused",
+                "agent.kind_live",
+                "policy.changed",
+                "binding.confirmed",
+                "verify.failed"
+              ]
+            },
+            "description": "The events to deliver."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "A name for the card on Settings → Notifications."
+          }
+        },
+        "required": ["url", "events"],
+        "additionalProperties": false
+      },
+      "hs_register_webhook_output": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "string",
+            "enum": ["ok"]
+          },
+          "webhook_id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "secret": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "guidance": {
+            "type": "string"
+          }
+        },
+        "required": ["result", "webhook_id", "url", "events", "secret", "active"]
       }
     }
   }

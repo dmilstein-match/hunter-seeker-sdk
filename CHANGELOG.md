@@ -2,6 +2,28 @@
 
 ## 2.3.0 — unreleased
 
+### Contract 2.8.0 (additive; every 2.7.0 call is unchanged)
+
+- **`hs_register_webhook`** (`POST /v1/register-webhook`) — register an https endpoint for signed
+  webhook deliveries of the workspace's events (Datagoat unit 22): `url`, `events[]` (run.completed,
+  run.honest_empty, verdict.drift, evidence.updated, escalate, trial.concluded, source.stale,
+  source.paused, agent.kind_live, policy.changed, binding.confirmed, verify.failed), `label?` →
+  `webhook_id`, the `secret` ONCE. Deliveries carry the Standard Webhooks headers (`webhook-id`,
+  `webhook-timestamp`, `webhook-signature: v1,<base64 HMAC-SHA256>`), retry five times over a day,
+  and reuse the id on a replay. Python `Client.register_webhook(url, events, label=None)`, a CrewAI
+  and a LangChain tool, the n8n operation "Register webhook".
+- `hs_decide`, `hs_propose_binding`, `hs_confirm_binding` accept `input_responses: [{ item_id,
+  option }]` — answers to a question an earlier call filed for a person (an applied review, a binding
+  choice, an analyst pass). The question rides beside the result: the MCP door's `_meta`
+  `io.hunter-seeker/input_request`, the REST door's `hs-input-required` / `hs-input-request`
+  (base64url JSON) headers, and `input_requests` in a binding envelope; the same Inbox row resolves
+  either way. The Python client and the adapters pass `input_responses` through unchanged.
+- MCP: the Tasks extension (2025-11-25) — `hs_rank_topk` advertises `taskSupport: optional`;
+  `tools/call` with `task` creates a task, `tasks/get` polls it, `tasks/result` returns the envelope
+  `hs_poll_task` would, `tasks/list` and `tasks/cancel` work on the same rows. The authorization
+  response carries `iss` (RFC 9207). `GET /api/stream` accepts a bearer credential (keys, OAuth)
+  as a push channel beside webhooks.
+
 ### Contract 2.7.0 (additive; every 2.6.0 call is unchanged)
 
 - `hs_decide`'s `open_levers[]` items accept `lever_arm` (`treat` | `control`): name the arm instead of case-id parity — a rolled-out lever passes `treat` for every case (Datagoat unit 19, D-59). Omit `open_levers` and the app passes the kind's active lever itself. No new tool; the Python client, both adapters and the n8n node pass the item through unchanged.

@@ -51,8 +51,9 @@ test("every operation posts to its own /v1 path", async () => {
     ["getBinding", "/v1/get-binding"], ["ingestEvents", "/v1/ingest-events"],
     ["setPolicy", "/v1/set-policy"], ["getPolicy", "/v1/get-policy"],
     ["decide", "/v1/decide"], ["readiness", "/v1/readiness"],
+    ["registerWebhook", "/v1/register-webhook"],
   ];
-  assert.equal(cases.length, 24, "the node must cover all twenty-four published tool operations");
+  assert.equal(cases.length, 25, "the node must cover all twenty-five published tool operations");
   for (const [operation, path] of cases) {
     const req = await run({ operation, dataSource: "datasetId", outcomeIsDesirable: "unstated", reading: "{}", row: "{}", rows: "[]", batchRows: "[]", verdict: "{}", signature: "{}", entityIds: "", postValue: "", decideAgentId: "coder", decideCase: '{"kind":{},"actor":{"kind":"agent"},"opened_at":"2026-09-13T10:00:00Z"}', decideOpenLevers: "[]", readinessAgentId: "coder", readinessKind: "{}" });
     assert.equal(req.url, path, `${operation} posted to ${req.url}`);
@@ -349,4 +350,12 @@ test("readiness sends agent_id and the kind only when one is given", async () =>
   assert.deepEqual(req.body, { agent_id: "coder" });
   const narrowed = await run({ operation: "readiness", readinessAgentId: "coder", readinessKind: '{"task":"refunds"}' });
   assert.deepEqual(narrowed.body, { agent_id: "coder", kind: { task: "refunds" } });
+});
+
+test("register webhook sends url, events and the label only when one is given", async () => {
+  const req = await run({ operation: "registerWebhook", webhookUrl: "https://x.example/hooks", webhookEvents: ["verdict.drift"], webhookLabel: "" });
+  assert.equal(req.url, "/v1/register-webhook");
+  assert.deepEqual(req.body, { url: "https://x.example/hooks", events: ["verdict.drift"] });
+  const labelled = await run({ operation: "registerWebhook", webhookUrl: "https://x.example/hooks", webhookEvents: ["escalate", "policy.changed"], webhookLabel: "ops" });
+  assert.deepEqual(labelled.body, { url: "https://x.example/hooks", events: ["escalate", "policy.changed"], label: "ops" });
 });
