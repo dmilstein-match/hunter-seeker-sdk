@@ -204,6 +204,14 @@ def _specs(hs: Client) -> List[tuple]:
           "abandoned": (Optional[bool], None)},
          lambda agent_id, case, mode=None, model_ref=None, open_levers=None, abandoned=None:
              hs.decide(agent_id, case, mode=mode, model_ref=model_ref, open_levers=open_levers, abandoned=abandoned)),
+
+        ("hs_readiness",
+         "Free. The go-live checklist for one agent, per kind of work: eleven rows (sources fresh, "
+         "bindings resolved, outcome observable, case-key agreement, cost table complete, record "
+         "settled, shadow graded, drift watchable, decision point verified, receipts verify, pattern "
+         "actionable), each ok / measurement / remedy; all_green is what a flip to live requires.",
+         {"agent_id": (str, ...), "kind": (Optional[Dict[str, str]], None)},
+         lambda agent_id, kind=None: hs.readiness(agent_id, kind=kind)),
     ]
 
 

@@ -68,6 +68,8 @@ const OPS = {
   getPolicy: { path: "/v1/get-policy", label: "Get the policy (free)", cost: "free" },
   // — govern, contract 2.5.0: one decision for a case —
   decide: { path: "/v1/decide", label: "Decide (one decision)", cost: "one decision" },
+  // — govern, contract 2.6.0: the go-live checklist as data —
+  readiness: { path: "/v1/readiness", label: "Readiness (free)", cost: "free" },
 } as const;
 
 /** The receipt's `route` is what a workflow branches on (never `lane`); the ports are its values. */
@@ -287,6 +289,9 @@ export class HunterSeeker implements INodeType {
       { displayName: "Model ref", name: "decideModelRef", type: "string", default: "", ...show("decide"), description: "A cleared scorecard for band / autonomy; empty for the binding's." },
       { displayName: "Open levers (JSON)", name: "decideOpenLevers", type: "json", default: "[]", ...show("decide"), description: "[{lever_id, kind_hash?}] — the worker assigns the arm and puts lever_id / lever_arm on the receipt." },
       { displayName: "Abandoned", name: "decideAbandoned", type: "boolean", default: false, ...show("decide"), description: "The analysis was abandoned: forces none with reason abandoned." },
+      // — readiness (2.6.0) —
+      { displayName: "Agent ID", name: "readinessAgentId", type: "string", default: "", required: true, ...show("readiness"), description: "The governed agent whose go-live checklist to read." },
+      { displayName: "Kind (JSON)", name: "readinessKind", type: "json", default: "{}", ...show("readiness"), description: "One kind of work as attribute values, e.g. { task: 'refunds' }; empty for every kind the agent has seen." },
       { displayName: "Kinds (JSON)", name: "policyKinds", type: "json", default: "[]", ...show("getPolicy"), description: "Kinds of work to evaluate: [{ service: 'payments-api', size: 'L' }] — each comes back with its unattended threshold or the missing cell." },
 
       // ── score ─────────────────────────────────────────────────────────────────────────────
@@ -602,6 +607,11 @@ export class HunterSeeker implements INodeType {
             ...(Array.isArray(levers) && levers.length ? { open_levers: levers } : {}),
             ...(p("decideAbandoned", false) === true ? { abandoned: true } : {}),
           };
+          break;
+        }
+        case "readiness": {
+          const kind = json("readinessKind");
+          body = { agent_id: p("readinessAgentId"), ...(kind && typeof kind === "object" && Object.keys(kind).length ? { kind } : {}) };
           break;
         }
       }

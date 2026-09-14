@@ -2,6 +2,18 @@
 
 ## 2.3.0 — unreleased
 
+### Contract 2.6.0 (additive; every 2.5.0 call is unchanged)
+
+- **`hs_readiness`** (`POST /v1/readiness`) — the go-live checklist for one agent, per kind of
+  work, as data (Datagoat unit 18): eleven rows — sources fresh, bindings resolved, outcome
+  observable (coverage ≥ 90%, rate 2–98%, polarity set), case-key agreement (≥ 95% keyed in 7
+  days), cost table complete, record settled (with "about N more closed cases" while it is not),
+  shadow graded, drift watchable (the volume floor or a longer bin), decision point verified (the
+  smoke test), receipts verify (the last twenty re-verified offline), pattern actionable — each
+  with `ok` (true | false | null = not applicable), its measurement and, when red, the remedy;
+  `all_green` is what a flip to live requires. Free. Reached from the Python client
+  (`readiness`), both framework adapters and the n8n node (`Readiness`).
+
 ### Contract 2.5.0 (additive; every 2.4.0 call is unchanged)
 
 - **`hs_decide`** (`POST /v1/decide`) — one decision for a case (Datagoat unit 13): `lane`
