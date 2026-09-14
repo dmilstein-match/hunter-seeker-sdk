@@ -1,0 +1,39 @@
+{
+  "$comment": "Hunter-Seeker decision point for Claude Code (Datagoat unit 23). Merge into .claude/settings.json (or settings.local.json). Set HS_API_KEY, HS_AGENT_ID, HS_SOURCE and, when the case is not the session, HS_CASE_ID; HS_FALLBACK names the route to take on any error (default none). The hook script never denies: HS_ROUTE is written to the session's environment for your policy to read. `hs hook <event>` (pip install hunter-seeker) is the same thing in Python.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/hs-hook.sh\" session-start",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/hs-hook.sh\" post-tool",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/hs-hook.sh\" stop",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

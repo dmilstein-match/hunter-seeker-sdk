@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-hunter-seeker",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "description": "Hunter-Seeker Verdict layer for n8n: score, rank, verify, report outcome, drift.",
   "license": "MIT",
   "repository": {
@@ -16,10 +16,12 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/HunterSeekerApi.credentials.js"
+      "dist/credentials/HunterSeekerApi.credentials.js",
+      "dist/credentials/HunterSeekerWebhook.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/HunterSeeker/HunterSeeker.node.js"
+      "dist/nodes/HunterSeeker/HunterSeeker.node.js",
+      "dist/nodes/HunterSeekerTrigger/HunterSeekerTrigger.node.js"
     ]
   },
   "peerDependencies": {
@@ -35,6 +37,7 @@
     "examples"
   ],
   "devDependencies": {
+    "@types/node": "^22.20.2",
     "typescript": "^5.6.0"
   },
   "publishConfig": {

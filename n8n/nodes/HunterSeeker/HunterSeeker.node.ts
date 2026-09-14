@@ -74,6 +74,7 @@ const OPS = {
 } as const;
 
 /** The receipt's `route` is what a workflow branches on (never `lane`); the ports are its values. */
+export const PORTS_FIELD = "route";
 const ROUTES = ["act", "review", "human", "none"] as const;
 const TWO_PORTS = [{ type: "main", displayName: "Result" }, { type: "main", displayName: "No finding" }];
 const DECIDE_PORTS = ROUTES.map((r) => ({ type: "main", displayName: r }));
@@ -631,7 +632,7 @@ export class HunterSeeker implements INodeType {
         // A receipt leaves by its ROUTE's port — never by `lane`, which is the record's answer,
         // not the instruction. An unknown or missing route is `none`: the port a workflow must
         // already handle.
-        const route = (res as { route?: string })?.route ?? "none";
+        const route = String((res as Record<string, unknown>)?.[PORTS_FIELD] ?? "none");
         const idx = ROUTES.indexOf(route as (typeof ROUTES)[number]);
         routed[idx < 0 ? ROUTES.length - 1 : idx].push({ json: res as any, pairedItem: { item: i } });
         decided = true;

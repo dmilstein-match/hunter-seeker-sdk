@@ -30,16 +30,22 @@ The governed loop over AGENT RUNS (ledger → priors → gate → control arm �
     r["era_locked"] or r["clock_like"]              # either one keeps the pattern off the live path
 
 Harness adapters for that loop: hunter_seeker.claude_agent (hooks), hunter_seeker.langchain_middleware.
+The decision point from any runtime (Datagoat unit 23): hunter_seeker.runtime (decide_case with a
+two-second budget and the named fallback, attest, authorizer_response), hunter_seeker.adk (Google ADK
+callbacks), hunter_seeker.openai_agents (an input guardrail + run hooks), the Claude Code hooks
+(`hs hook`, hooks/claude-code), the n8n Trigger node.
 Framework adapters that give an AGENT the engine as tools: hunter_seeker.langchain, hunter_seeker.crewai.
 CLI: `hs`.
 """
 from .client import Client, HunterSeekerError, ProblemDetails
 from .loop import Decision, Ledger, control_arm, decide, era_lock, gate
+from .runtime import RouteDecision, attest, authorizer_response, decide_case
 from .safeguards import (ACTIONABLE, REFUSED, UNJUDGED, Autonomy, Band, MissingSafeguard,
                          attestable, band, ceiling, lever_helps, polarity_of, run_is_actionable,
                          should_act, usability_of)
 
-__all__ = ["Client", "HunterSeekerError", "ProblemDetails",
+__all__ = [
+    "RouteDecision", "decide_case", "attest", "authorizer_response","Client", "HunterSeekerError", "ProblemDetails",
            "Band", "Autonomy", "MissingSafeguard",
            "should_act", "ceiling", "band", "lever_helps", "polarity_of", "attestable",
            "usability_of", "run_is_actionable", "ACTIONABLE", "UNJUDGED", "REFUSED",

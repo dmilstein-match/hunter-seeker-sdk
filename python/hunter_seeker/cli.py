@@ -10,6 +10,9 @@
   hs drift                    has the pattern moved since the last refit? (free)
   hs verify v.json s.json     keyless verification
   hs sample                   rank a hosted sample dataset (free) — the five-minute test
+  hs hook session-start       Claude Code hooks (unit 23): decide for the case named by HS_CASE_ID
+  hs hook post-tool           (or the hook's session_id), write HS_ROUTE to $CLAUDE_ENV_FILE;
+  hs hook stop                attest the tool name; close the case — exit 0 always, never a deny
 
 The loop closes from a shell: rank, score, act, report, evidence, drift. The three new verbs are
 free — they spend no run and no decision — so there is no reason to close the loop from Python
@@ -18,6 +21,7 @@ just to reach them.
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 import json
 import os
 import re
@@ -169,6 +173,60 @@ def _client() -> Client:
               "Run `hs signup` to mint a samples-only key, or set HS_API_KEY to a real one. "
               "The key was not sent: this was decided locally from its shape.")
     return Client(api_key=key, base_url=_base_url())
+
+
+def _hook(event: str) -> int:
+    """Claude Code hooks (Datagoat unit 23). Reads the hook's JSON on stdin; exit 0 whatever happens:
+    a decision point that fails must not stop the session, and the ROUTE is written to
+    `$CLAUDE_ENV_FILE` for the harness's own policy — this never denies."""
+    from .runtime import attest, close_case, decide_case, env_lines, fallback_decision
+    try:
+        raw = sys.stdin.read() if not sys.stdin.isatty() else ""
+    except Exception:  # noqa: BLE001
+        raw = ""
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except Exception:  # noqa: BLE001
+        data = {}
+    case_id = os.environ.get("HS_CASE_ID") or str(data.get("session_id") or "")
+    fallback = os.environ.get("HS_FALLBACK", "none")
+    source = os.environ.get("HS_SOURCE", "")
+    agent_id = os.environ.get("HS_AGENT_ID", "")
+    key = (os.environ.get("HS_API_KEY") or "").strip()
+    hs = Client(api_key=key, base_url=_base_url(), timeout=2.0) if key else None
+
+    def write_env(d):
+        path = os.environ.get("CLAUDE_ENV_FILE")
+        if path:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(env_lines(d))
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart",
+                                                 "additionalContext": f"hs route: {d.route} (lane {d.lane or ''}, arm {d.arm or ''})"}}))
+
+    if event == "session-start":
+        if not (hs and agent_id and case_id):
+            write_env(fallback_decision(fallback, "HS_API_KEY, HS_AGENT_ID or the case id is missing", case_id))
+            return 0
+        kind = {}
+        try:
+            kind = json.loads(os.environ.get("HS_KIND_JSON", "{}")) or {}
+        except Exception:  # noqa: BLE001
+            kind = {}
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        case = {"case_id": case_id, "kind": kind, "actor": {"kind": "agent", "name": "claude-code"}, "opened_at": now}
+        write_env(decide_case(hs, agent_id, case, fallback=fallback, timeout=2.0))
+        return 0
+    if event == "post-tool":
+        tool = str(data.get("tool_name") or "")
+        if hs and source and case_id and tool:
+            attest(hs, source, case_id, tool, arm=os.environ.get("HS_ARM") or None,
+                   lever_id=os.environ.get("HS_LEVER_ID") or None, timeout=2.0)
+        return 0
+    if event == "stop":
+        if hs and source and case_id:
+            close_case(hs, source, case_id, timeout=2.0)
+        return 0
+    return 0
 
 
 def _signup(agent_caller: str, force: bool) -> int:
@@ -364,6 +422,8 @@ def main(argv=None) -> int:
                 if i + 1 < len(rest):
                     caller = rest[i + 1]
             return _signup(caller, force="--force" in rest)
+        if cmd == "hook":
+            return _hook(rest[0] if rest else "")
         hs = _client()
         if cmd == "sample":
             out = hs.rank_topk(dataset_id="sample:saas_churn", entity_column="customer_id", outcome_column="churned", subject_kind="org")

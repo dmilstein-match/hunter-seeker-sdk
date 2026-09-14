@@ -529,6 +529,11 @@ class Decision:
     verdict: Dict[str, Any] = field(default_factory=dict)
     signature: Dict[str, Any] = field(default_factory=dict)
     row_scored: Dict[str, Any] = field(default_factory=dict)
+    # Datagoat unit 23: the receipt's route, arm and lever id when the decision came from
+    # `POST /v1/decide` (hunter_seeker.runtime); None on the scorecard path.
+    route: Optional[str] = None
+    arm: Optional[str] = None
+    lever_id: Optional[str] = None
 
 
 def decide(entity: Mapping[str, Any], verdict: Mapping[str, Any], *, run_id: Any,

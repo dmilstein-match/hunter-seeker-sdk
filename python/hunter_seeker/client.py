@@ -57,7 +57,7 @@ class Client:
 
     # -- transport ---------------------------------------------------------- #
     def _call(self, path: str, body: Optional[Mapping[str, Any]] = None, *, method: str = "POST",
-              idempotency_key: Optional[str] = None) -> Dict[str, Any]:
+              idempotency_key: Optional[str] = None, timeout: Optional[float] = None) -> Dict[str, Any]:
         # allow_nan=False: json.dumps otherwise writes NaN as a bare token that is not JSON, and the
         # product answers 422 "The request body is not valid JSON." Refused here, before the request.
         data = (json.dumps(body or {}, default=_json_default, allow_nan=False).encode()
@@ -68,7 +68,7 @@ class Client:
             **({"idempotency-key": idempotency_key} if idempotency_key else {}),
         })
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:  # noqa: S310
+            with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:  # noqa: S310
                 return json.load(r)
         except urllib.error.HTTPError as e:
             try:
@@ -312,11 +312,11 @@ class Client:
         return self._call("/v1/get-binding", body)
 
     # -- contract 2.3.0: event ingest ------------------------------------------ #
-    def ingest_events(self, events: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    def ingest_events(self, events: Sequence[Mapping[str, Any]], *, timeout: Optional[float] = None) -> Dict[str, Any]:
         """Ingest CloudEvents 1.0 envelopes (up to 500) into a registered event-stream source under
         a key with the ingest scope. Content keys (prompts, completions) refuse the batch as 422
         content_refused; a replayed id is a duplicate, not an error; a near-duplicate is held."""
-        return self._call("/v1/ingest-events", {"events": [dict(e) for e in events]})
+        return self._call("/v1/ingest-events", {"events": [dict(e) for e in events]}, timeout=timeout)
 
     # -- contract 2.4.0: the cost table ---------------------------------------- #
     def set_policy(self, policy: Mapping[str, Any], *, agent_id: Optional[str] = None) -> Dict[str, Any]:
@@ -339,7 +339,8 @@ class Client:
     # -- contract 2.5.0: one decision for a case ------------------------------- #
     def decide(self, agent_id: str, case: Mapping[str, Any], *, mode: Optional[str] = None,
                model_ref: Optional[str] = None, open_levers: Optional[Sequence[Mapping[str, Any]]] = None,
-               abandoned: Optional[bool] = None) -> Dict[str, Any]:
+               abandoned: Optional[bool] = None, input_responses: Optional[Sequence[Mapping[str, Any]]] = None,
+               timeout: Optional[float] = None) -> Dict[str, Any]:
         """One decision for a case: lane (the record's answer), route (what to do — the lane when
         applied, else none), band, max_autonomy, likelihood_direction, a signed receipt and a
         case_ref. Branch on `route` only. `case` is {case_id?, kind: {attr: value}, actor:
@@ -349,7 +350,8 @@ class Client:
         if model_ref: body["model_ref"] = model_ref
         if open_levers: body["open_levers"] = [dict(l) for l in open_levers]
         if abandoned is not None: body["abandoned"] = abandoned
-        return self._call("/v1/decide", body)
+        if input_responses: body["input_responses"] = [dict(r) for r in input_responses]
+        return self._call("/v1/decide", body, timeout=timeout)
 
     # -- contract 2.6.0: the go-live checklist as data -------------------------- #
     def readiness(self, agent_id: str, *, kind: Optional[Mapping[str, str]] = None) -> Dict[str, Any]:

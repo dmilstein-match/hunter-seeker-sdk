@@ -94,3 +94,14 @@ in `examples/`.
 ## Licence
 
 MIT, not the Apache-2.0 of the repository root — that is deliberate, not an oversight: n8n community nodes are conventionally MIT and n8n's verification process expects it. Everything else in this repository is Apache-2.0.
+
+## The Trigger node (Datagoat unit 23)
+
+**Hunter-Seeker Trigger** starts a workflow on a signed webhook from the event bus — drift fired,
+a run came back honest-empty, a decision went to the Approval queue, a trial concluded, a receipt
+failed verification, and the rest. Register the workflow's webhook URL under Settings →
+Notifications → Webhooks (or with `hs_register_webhook`), paste the secret into the
+`Hunter-Seeker Webhook` credential, pick the events. A delivery whose Standard-Webhooks signature
+does not verify is answered 401 and starts nothing; an event the workflow did not subscribe to is
+acknowledged and ignored. The action node's `Decide` still leaves by the receipt's **route** port
+(`PORTS_FIELD`), never by `lane`.

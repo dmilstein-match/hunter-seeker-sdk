@@ -1,6 +1,32 @@
 # Changelog
 
-## 2.3.0 — unreleased
+## 2.4.0 — unreleased
+
+### Runtime wrappers (Datagoat unit 23; contract unchanged at 2.8.0)
+
+- **`hunter_seeker.runtime`** — the one core every wrapper shares: `decide_case(hs, agent_id, case,
+  fallback=, timeout=2.0)` (any error or timeout → the customer's named fallback with its reason,
+  never an exception, never a denial), `attest` / `close_case` (CloudEvents through
+  `hs_ingest_events`, the tool NAME only, `arm` and `lever_id` from the receipt), `RouteDecision`,
+  `authorizer_response` (the gateway shape: `allow: null`, band, max_autonomy,
+  likelihood_direction, lane, route, arm?, lever_id?, receipt), `env_lines`.
+- **Claude Code** — `hooks/claude-code/hooks.json` + `hs-hook.sh` (curl, no Python) and `hs hook
+  session-start | post-tool | stop`: decide at SessionStart (HS_ROUTE… written to
+  `$CLAUDE_ENV_FILE`), attest each tool name at PostToolUse, close the case at Stop.
+- **LangChain** — `DecideMiddleware` (`before_agent` decides and jumps to the end on `review` /
+  `human`; `after_agent` attests the tools the run called); `LoopMiddleware` (the scorecard gate)
+  is unchanged. `Decision` gains optional `route`, `arm`, `lever_id`.
+- **Google ADK** — `hunter_seeker.adk.decide_before_agent` / `attest_after_tool`.
+- **OpenAI Agents SDK** — `hunter_seeker.openai_agents.decide_input_guardrail` (trips on `human`
+  by default) / `AttestHooks`.
+- **n8n** — the **Hunter-Seeker Trigger** node: a signed webhook (Standard Webhooks; the
+  `hunterSeekerWebhook` credential holds the secret) starts a workflow with the event's body;
+  the action node's `PORTS_FIELD` is `route`.
+- **Gateway** — `docs/runtimes/gateway.md`.
+- `Client.decide(..., input_responses=, timeout=)`, `Client.ingest_events(..., timeout=)`,
+  `Client._call(..., timeout=)` (per-call budgets); extras `adk`, `openai-agents`.
+
+## 2.3.0
 
 ### Contract 2.8.0 (additive; every 2.7.0 call is unchanged)
 
