@@ -2,6 +2,10 @@
 
 ## 2.3.0 — unreleased
 
+### Contract 2.7.0 (additive; every 2.6.0 call is unchanged)
+
+- `hs_decide`'s `open_levers[]` items accept `lever_arm` (`treat` | `control`): name the arm instead of case-id parity — a rolled-out lever passes `treat` for every case (Datagoat unit 19, D-59). Omit `open_levers` and the app passes the kind's active lever itself. No new tool; the Python client, both adapters and the n8n node pass the item through unchanged.
+
 ### Contract 2.6.0 (additive; every 2.5.0 call is unchanged)
 
 - **`hs_readiness`** (`POST /v1/readiness`) — the go-live checklist for one agent, per kind of

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Agent Actions (curated)",
-    "version": "2.6.0",
+    "version": "2.7.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -3684,10 +3684,15 @@
                 },
                 "kind_hash": {
                   "type": "string"
+                },
+                "lever_arm": {
+                  "type": "string",
+                  "enum": ["treat", "control"],
+                  "description": "Name the arm instead of parity: a rolled-out lever passes treat for every case (D-59)."
                 }
               }
             },
-            "description": "Open levers (unit 19): the worker assigns the arm by case-id parity and puts lever_id / lever_arm on the receipt."
+            "description": "Open levers (unit 19): the worker assigns the arm by case-id parity (or the arm you name) and puts lever_id / lever_arm on the receipt. Omit and the app passes the kind's active lever itself."
           },
           "abandoned": {
             "type": "boolean",
