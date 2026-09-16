@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Hunter-Seeker Verdict Layer API",
-    "version": "2.8.0",
+    "version": "2.9.0",
     "description": "Deterministic, signed, refusable decisions for agents. Agents may generate copy; they may not invent the score. Deprecation policy: a contract version is served for 12 months after its successor ships.",
     "contact": {
       "url": "https://hunter-seeker.io/for-agents"
@@ -5557,6 +5557,10 @@
                   },
                   "name": {
                     "type": "string"
+                  },
+                  "version": {
+                    "type": "string",
+                    "description": "The actor's version when your system carries one (a model, a prompt or a release). Contract 2.9.0 (unit 35)."
                   }
                 }
               },

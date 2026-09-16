@@ -2,6 +2,14 @@
 
 ## 2.4.0 — unreleased
 
+### Contract 2.9.0 — `hs_decide`'s actor carries a version (Datagoat unit 35)
+
+- `case.actor.version` is an optional member: the actor's version when the caller's system carries
+  one (a model, a prompt, a release). Additive and optional, so every call written against 2.8.0 is
+  unchanged, and the surfaces reach the same operations as before.
+- `openapi/openapi.json` and `openapi/openapi-agent-actions.json` regenerated from the product
+  repository's `packages/mcp` schemas (`info.version` 2.9.0).
+
 ### Runtime wrappers (Datagoat unit 23; contract unchanged at 2.8.0)
 
 - **`hunter_seeker.runtime`** — the one core every wrapper shares: `decide_case(hs, agent_id, case,
