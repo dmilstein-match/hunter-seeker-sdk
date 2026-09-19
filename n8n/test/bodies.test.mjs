@@ -359,3 +359,52 @@ test("register webhook sends url, events and the label only when one is given", 
   const labelled = await run({ operation: "registerWebhook", webhookUrl: "https://x.example/hooks", webhookEvents: ["escalate", "policy.changed"], webhookLabel: "ops" });
   assert.deepEqual(labelled.body, { url: "https://x.example/hooks", events: ["escalate", "policy.changed"], label: "ops" });
 });
+
+/* ── inline rows above Hunter-Seeker's synchronous ceiling (2026-09-19) ───────────────────── */
+
+/** A context whose API answers each call from a script, recording every request. */
+function scripted(params, answers) {
+  const sent = [];
+  const self = {
+    getInputData: () => [{ json: {} }],
+    getExecutionId: () => "exec-1",
+    getCredentials: async () => ({ baseUrl: "https://hunter-seeker.io/api" }),
+    getNodeParameter: (name, _i, fallback) => (name in params ? params[name] : fallback),
+    helpers: { httpRequestWithAuthentication: { async call(_s, _c, req) { sent.push(req); return answers.shift(); } } },
+  };
+  return { self, sent };
+}
+const RANK = { operation: "rank", outcomeIsDesirable: "unstated", entityColumn: "id", outcomeColumn: "y", subjectKind: "org", ack: false, topK: 20, reading: "{}" };
+
+test("inline rows: a PENDING answer is polled to the ranking, which leaves by the ranking port", async () => {
+  const { self, sent } = scripted({ ...RANK, dataSource: "rows", rows: "[]" }, [
+    { status: "pending", task_id: "rank_t1", retry_after_ms: 1000 },
+    { status: "pending", task_id: "rank_t1", retry_after_ms: 1000 },
+    { result: "ranked", ranking_ref: "rank_r1", entities: [] },
+  ]);
+  const [out, empty] = await new HunterSeeker().execute.call(self);
+  assert.deepEqual(sent.map((r) => r.url), ["/v1/rank-topk", "/v1/poll-task", "/v1/poll-task"]);
+  assert.deepEqual(sent[1].body, { task_id: "rank_t1" });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].json.ranking_ref, "rank_r1");
+  assert.equal(empty.length, 0);
+});
+
+test("inline rows: an honest-empty reached by polling still leaves by the none port", async () => {
+  const { self } = scripted({ ...RANK, dataSource: "rows", rows: "[]" }, [
+    { status: "pending", task_id: "rank_t2", retry_after_ms: 1000 },
+    { result: "none", reasons: ["no pattern cleared the bar"] },
+  ]);
+  const [out, empty] = await new HunterSeeker().execute.call(self);
+  assert.equal(out.length, 0);
+  assert.equal(empty.length, 1);
+});
+
+test("a dataset_id rank is NOT followed — its workflow owns the Poll step", async () => {
+  const { self, sent } = scripted({ ...RANK, dataSource: "datasetId", datasetId: "ds_1" }, [
+    { status: "pending", task_id: "rank_t3", retry_after_ms: 1000 },
+  ]);
+  const [out] = await new HunterSeeker().execute.call(self);
+  assert.equal(sent.length, 1);
+  assert.equal(out[0].json.status, "pending");
+});

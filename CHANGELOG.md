@@ -2,6 +2,17 @@
 
 ## 2.4.0 — unreleased
 
+### n8n — inline rows above 2,000 are followed to the answer (Hunter-Seeker #233)
+
+- Hunter-Seeker now ranks an inline table above its synchronous ceiling (2,000 rows) async, on the
+  REST door as well as MCP, instead of refusing it. The node's "Inline rows" source promised the
+  answer and workflows built on it have no Poll step, so the node now polls the task itself (at the
+  API's `retry_after_ms`, never under 1 s, for at most 15 minutes) and routes the terminal answer
+  as before: a ranking by the ranking port, `result: "none"` by the none port. Still pending after
+  15 minutes, the pending envelope is returned, and a Poll step can take its `task_id`.
+- A `dataset_id` or `fetch_url` rank is unchanged: it returns pending, and the workflow polls.
+- The Python client already waited on a pending answer; unchanged.
+
 ### Contract 2.9.0 — `hs_decide`'s actor carries a version (Datagoat unit 35)
 
 - `case.actor.version` is an optional member: the actor's version when the caller's system carries

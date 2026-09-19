@@ -24,6 +24,7 @@
  * Publish via the n8n community-node GitHub Action with provenance (required since 2026-05-01).
  */
 import type { IExecuteFunctions, INodeExecutionData, INodeType, INodeTypeDescription } from "n8n-workflow";
+import { sleep } from "n8n-workflow";
 
 /**
  * Every operation, its REST path, and what it costs.
@@ -75,6 +76,9 @@ const OPS = {
 
 /** The receipt's `route` is what a workflow branches on (never `lane`); the ports are its values. */
 export const PORTS_FIELD = "route";
+/** How long an inline rank is followed before its pending envelope is handed back (see followPending). */
+const FOLLOW_MAX_MS = 15 * 60_000;
+
 const ROUTES = ["act", "review", "human", "none"] as const;
 const TWO_PORTS = [{ type: "main", displayName: "Result" }, { type: "main", displayName: "No finding" }];
 const DECIDE_PORTS = ROUTES.map((r) => ({ type: "main", displayName: r }));
@@ -191,11 +195,11 @@ export class HunterSeeker implements INodeType {
         ...show("rank"),
         options: [
           { name: "Dataset ID (async — then Poll)", value: "datasetId" },
-          { name: "Inline rows (synchronous)", value: "rows" },
+          { name: "Inline rows (answer returned)", value: "rows" },
           { name: "Fetch URL (async — then Poll)", value: "fetchUrl" },
         ],
         description:
-          "Inline rows return the ranking immediately. A dataset_id or fetch_url returns {status:'pending', task_id} — follow it with the Poll operation. A reading requires one of the async sources.",
+          "Inline rows return the answer: up to 2,000 rows Hunter-Seeker ranks them synchronously, and above that it runs the ranking async and this node polls it to the answer for you (up to 15 minutes). A dataset_id or fetch_url returns {status:'pending', task_id} — follow it with the Poll operation. A reading requires one of the async sources.",
       },
       { displayName: "Dataset ID", name: "datasetId", type: "string", default: "sample:saas_churn", displayOptions: { show: { operation: ["rank"], dataSource: ["datasetId"] } } },
       { displayName: "Rows (JSON array)", name: "rows", type: "json", default: "[]", displayOptions: { show: { operation: ["rank"], dataSource: ["rows"] } } },
@@ -393,6 +397,22 @@ export class HunterSeeker implements INodeType {
       this.helpers.httpRequestWithAuthentication.call(this, "hunterSeekerApi", {
         method: "POST", baseURL: creds.baseUrl, url: path, body: payload, json: true,
       });
+
+    /** Poll a pending task to its terminal answer, at the pace the API asks for (never under 1 s),
+     *  for at most FOLLOW_MAX_MS. Still pending then: hand back the pending envelope, whose task_id
+     *  a Poll step can pick up — never a guess at the answer. */
+    const followPending = async (first: unknown) => {
+      let res = first as { status?: string; task_id?: string; retry_after_ms?: number };
+      let waited = 0;
+      while (res?.status === "pending" && typeof res.task_id === "string") {
+        const every = Math.min(Math.max(Number(res.retry_after_ms) || 2000, 1000), 30_000);
+        if (waited + every > FOLLOW_MAX_MS) break;
+        await sleep(every);
+        waited += every;
+        res = (await post(OPS.poll.path, { task_id: res.task_id })) as typeof res;
+      }
+      return res;
+    };
 
     for (let i = 0; i < items.length; i++) {
       const op = this.getNodeParameter("operation", i) as Op;
@@ -627,7 +647,12 @@ export class HunterSeeker implements INodeType {
         }
       }
 
-      const res = await post(OPS[op].path, body);
+      let res = await post(OPS[op].path, body);
+      // Hunter-Seeker ranks an inline table above its synchronous ceiling (2,000 rows) ASYNC, and
+      // answers `{status:"pending", task_id}` (2026-09-19). This source promises the answer, and a
+      // workflow built on it has no Poll step, so the node follows the task itself — otherwise the
+      // pending envelope would leave by the ranking port as if it were the ranking.
+      if (op === "rank" && p("dataSource") === "rows") res = await followPending(res);
       if (op === "decide") {
         // A receipt leaves by its ROUTE's port — never by `lane`, which is the record's answer,
         // not the instruction. An unknown or missing route is `none`: the port a workflow must
